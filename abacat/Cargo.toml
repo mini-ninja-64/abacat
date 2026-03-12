@@ -1,0 +1,9 @@
+[package]
+name = "abacat"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+abacat_eval = { version = "0.1.0", path = "../abacat_eval" }
+abacat_parser = { version = "0.1.0", path = "../abacat_parser" }
+ctrlc = "3.5.2"

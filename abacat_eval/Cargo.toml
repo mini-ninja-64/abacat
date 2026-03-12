@@ -1,0 +1,11 @@
+[package]
+name = "abacat_eval"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+abacat_common = { version = "0.1.0", path = "../abacat_common" }
+abacat_parser = { version = "0.1.0", path = "../abacat_parser" }
+rstest = "0.26.1"
+rust_decimal = "1.40.0"
+phf = { version = "0.13.1", features = ["macros"] }

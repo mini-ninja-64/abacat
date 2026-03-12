@@ -1,0 +1,3 @@
+[workspace]
+members = ["abacat", "abacat_common", "abacat_eval", "abacat_parser"]
+resolver = "3"
