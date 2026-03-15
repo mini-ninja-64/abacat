@@ -134,8 +134,6 @@ pub fn eval_value((expr, _): &Spanned<Expr>, snapshot: &Snapshot) -> Result<Valu
     }
 }
 
-// TODO: move out to seperate function, which takes a snapshot?
-// TODO: make immutable, only mutable for the func interner, should take a mutable ref
 pub fn eval(expr: &Spanned<Expr>, snapshot: &Snapshot) -> Result<Eval, ()> {
     match &expr.0 {
         Expr::Binary(left, BinaryOp::Equal, right) => {

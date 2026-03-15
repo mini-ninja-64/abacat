@@ -39,7 +39,6 @@ pub const NATIVE_VALUES: phf::Map<&str, NativeValue> = phf_map! {
     "DECIMAL_MIN" => NativeValue::Value(Value::decimal(Decimal::MIN)),
     "DECIMAL_MAX" => NativeValue::Value(Value::decimal(Decimal::MAX)),
 };
-// TODO: Make combinators
 
 #[cfg(test)]
 mod tests {
