@@ -139,9 +139,9 @@ where
             literal_expr,
             call_expr,
             ident_expr,
-            parenthesised_expr,
-            named_function,
             anonymous_function,
+            named_function,
+            parenthesised_expr,
         ))
         .map_with(|i, e| (i, e.span()))
         .pratt((

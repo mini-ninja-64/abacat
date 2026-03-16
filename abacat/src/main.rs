@@ -22,9 +22,9 @@ fn main() -> io::Result<()> {
         let parsed = parse(&expr_buffer);
         if let Result::Ok(expr) = parsed {
             match doc.next(expr) {
-                Ok(Eval::Value(value)) => println!("{:?}", value),
-                Ok(Eval::ValueAssignment(ident, _)) => println!("Assigned '{}'", ident),
-                Err(_) => println!("Failed to eval the statement"),
+                Ok(Eval::Value(value)) => println!("> {}", value),
+                Ok(Eval::ValueAssignment(ident, _)) => println!("> Assigned '{}'", ident),
+                Err(_) => println!("> Failed to eval the statement"),
             }
         } else {
             println!("Could not parse!");

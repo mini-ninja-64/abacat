@@ -1,9 +1,11 @@
+use std::fmt::Display;
+
 use abacat_common::checked::{CheckedAnd, CheckedEq, CheckedOr};
-use rust_decimal::{prelude::ToPrimitive, Decimal};
+use rust_decimal::{Decimal, prelude::ToPrimitive};
 
 use crate::value::{
-    typed_value::{Number, TypedValue},
     Function,
+    typed_value::{Number, TypedValue},
 };
 
 macro_rules! binary_maths {
@@ -47,6 +49,27 @@ pub enum DisplayHint {
     Base10,
     Base8,
     Base2,
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (&self.val, &self.display_hint) {
+            (TypedValue::Number(Number::Decimal(number)), _) => write!(f, "{}", number),
+            (TypedValue::Number(Number::Integer(number)), DisplayHint::Base16) => {
+                write!(f, "{:#X}", number)
+            }
+            (TypedValue::Number(Number::Integer(number)), DisplayHint::Base8) => {
+                write!(f, "0{:#o}", number)
+            }
+            (TypedValue::Number(Number::Integer(number)), DisplayHint::Base2) => {
+                write!(f, "{:#b}", number)
+            }
+            (TypedValue::Number(Number::Integer(number)), _) => write!(f, "{}", number),
+            (TypedValue::Boolean(bool), _) => write!(f, "{}", bool),
+            (TypedValue::Function(Function::Native(_)), _) => write!(f, "Native Function"),
+            (TypedValue::Function(Function::UserFunction(_)), _) => write!(f, "User Function"),
+        }
+    }
 }
 
 impl CheckedEq<&Value> for Value {
