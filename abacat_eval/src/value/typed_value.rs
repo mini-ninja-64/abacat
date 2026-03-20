@@ -6,7 +6,7 @@ use rust_decimal::{
 
 use abacat_parser::parser::parser::Function as FunctionExpr;
 
-use crate::value::native::NativeFunctionPointer;
+use crate::{state::VecChangeset, value::native::NativeFunctionPointer};
 
 #[derive(Debug, Clone)]
 pub enum Number {
@@ -61,7 +61,10 @@ impl Number {
 #[derive(Debug, Clone)]
 pub enum Function {
     Native(NativeFunctionPointer),
-    UserFunction(FunctionExpr),
+    UserFunction {
+        captures: VecChangeset<String>,
+        expr: FunctionExpr,
+    },
 }
 
 #[derive(Debug, Clone)]

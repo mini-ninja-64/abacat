@@ -1,9 +1,9 @@
 use abacat_common::mutability::MutabilityGuard;
-use abacat_parser::{parser::parser::Expr, Spanned};
+use abacat_parser::{Spanned, parser::parser::Expr};
 
 use crate::{
-    eval::{eval, Eval},
-    state::{NativeChangeset, State, StateMutation},
+    eval::{Eval, eval},
+    state::{NativeChangeset, State, StateMutation, VecChangeset},
     value::native::NATIVE_VALUES,
 };
 
@@ -36,7 +36,7 @@ impl Document {
             let mutable = self
                 .state
                 .last()
-                .resolve_ident(&ident)
+                .resolve_ident::<VecChangeset<_>>(&ident, None)
                 .map_or(true, |state| state.is_mutable());
             if !mutable {
                 return Err(()); // Attempt to mutate immutable variable

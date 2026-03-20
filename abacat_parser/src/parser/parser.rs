@@ -3,7 +3,7 @@ use chumsky::{
     error::Rich,
     extra,
     input::ValueInput,
-    pratt::{infix, left, prefix, right},
+    pratt::{infix, left, postfix, prefix, right},
     prelude::{choice, just},
     recursive::recursive,
     select,
@@ -59,7 +59,7 @@ impl Function {
 pub enum Expr {
     Binary(Box<Spanned<Self>>, BinaryOp, Box<Spanned<Self>>),
     Unary(UnaryOp, Box<Spanned<Self>>),
-    Call(Spanned<Ident>, Vec<Spanned<Self>>),
+    Call(Box<Spanned<Self>>, Vec<Spanned<Self>>),
     Ident(Spanned<Ident>),
     Literal(Literal), // List(Box<>)
     Parenthesised(Box<Spanned<Self>>),
@@ -96,17 +96,6 @@ where
             .labelled("Parenthesised")
             .as_context();
 
-        let expr_args = expr
-            .clone()
-            .separated_by(just(Token::Comma))
-            .collect::<Vec<_>>()
-            .delimited_by(just(Token::LeftParens), just(Token::RightParens));
-        let call_expr = ident
-            .then(expr_args)
-            .map(|(ident, args)| Expr::Call(ident, args))
-            .labelled("Function call")
-            .as_context();
-
         let args_def = ident
             .clone()
             .separated_by(just(Token::Comma))
@@ -128,16 +117,21 @@ where
 
         let anonymous_function = args_def
             .then_ignore(just(Token::Arrow))
-            .then(expr)
+            .then(expr.clone())
             .map_with(|(args, body), e| {
                 Expr::AnonymousFunction((Function::new(args, Box::new(body)), e.span()))
             })
             .labelled("Anonymous function declaration")
             .as_context();
-        // .map_with(|x, e| Expr::NamedFunction((x, e.span())));
+
+        let expr_args = expr
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LeftParens), just(Token::RightParens));
+
         choice((
             literal_expr,
-            call_expr,
             ident_expr,
             anonymous_function,
             named_function,
@@ -145,6 +139,9 @@ where
         ))
         .map_with(|i, e| (i, e.span()))
         .pratt((
+            postfix(5, expr_args, |left, args, e| {
+                (Expr::Call(Box::new(left), args), e.span())
+            }),
             prefix(4, just(Token::Minus), |_, r, e| {
                 (Expr::Unary(UnaryOp::Minus, Box::new(r)), e.span())
             }),

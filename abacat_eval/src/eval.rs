@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{collections::HashSet, ops::Deref};
 
 use abacat_common::mutability::MutabilityGuard;
 use abacat_parser::{
@@ -17,6 +17,54 @@ use abacat_parser::parser::parser::Ident;
 pub enum Eval {
     Value(Value),
     ValueAssignment(Ident, Value),
+}
+
+fn calculate_captures_func(
+    func: &Spanned<FunctionExpr>,
+    hash_set: HashSet<Ident>,
+) -> HashSet<Ident> {
+    let (FunctionExpr { args, body }, _) = &func;
+    let mut hash_set = calculate_captures(&body, hash_set);
+    for (ident, _) in args {
+        _ = hash_set.remove(ident);
+    }
+    hash_set
+}
+
+fn calculate_captures(
+    function_expr: &Spanned<Expr>,
+    mut hash_set: HashSet<Ident>,
+) -> HashSet<Ident> {
+    let (body, _) = function_expr;
+    match body {
+        Expr::Binary(left, _, right) => {
+            let vec = calculate_captures(left, hash_set);
+            calculate_captures(right, vec)
+        }
+        Expr::Unary(_, right) => calculate_captures(right, hash_set),
+        Expr::Call(_, items) => items
+            .iter()
+            .fold(hash_set, |vec, expr| calculate_captures(expr, vec)),
+        Expr::Ident(ident) => {
+            hash_set.insert(ident.0.clone());
+            hash_set
+        }
+        Expr::Literal(_) => hash_set,
+        Expr::Parenthesised(expr) => calculate_captures(expr, hash_set),
+        Expr::AnonymousFunction(func) | Expr::NamedFunction(_, func) => {
+            calculate_captures_func(func, hash_set)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {
+        // let expr = parse("(a) => (b) => a + b + z").unwrap();
+        // let idents = calculate_captures(&expr, HashSet::new()).iter().collect();
+        // assert_eq!(idents, vec!["z".to_string()])
+    }
 }
 
 impl<'a> CheckedEq<&Eval> for Eval {
@@ -41,67 +89,70 @@ impl<'a> CheckedEq<&Eval> for Eval {
 }
 
 // TODO: Make eval funcs more generic
-pub type Snapshot<'a> = StateSnapshot<
-    'a,
-    String,
-    Vec<StateMutation<String>>,
-    NativeChangeset,
-    Vec<StateMutation<String>>,
->;
+pub type Snapshot<'a> = StateSnapshot<'a, String, NativeChangeset, Vec<StateMutation<String>>>;
 
-pub fn eval_value((expr, _): &Spanned<Expr>, snapshot: &Snapshot) -> Result<Value, ()> {
+pub fn eval_value<'a, 'b: 'c, 'c>(
+    (expr, _): &'a Spanned<Expr>,
+    snapshot: &'b Snapshot<'b>,
+    overrides: Option<&VecChangeset<String>>,
+) -> Result<Value, ()> {
     match &expr {
         Expr::Binary(left, op, right) => {
-            let right = eval_value(&*right, snapshot)?;
-            let left = eval_value(&*left, snapshot)?;
+            let right = eval_value(&*right, snapshot, overrides)?;
+            let left = eval_value(&*left, snapshot, overrides)?;
 
             match op {
                 BinaryOp::Equal => Err(()),
-                BinaryOp::Plus => left.try_add(right),
-                BinaryOp::Minus => left.try_sub(right),
-                BinaryOp::Multiply => left.try_mul(right),
-                BinaryOp::Divide => left.try_div(right),
-                BinaryOp::IntDivide => left.try_int_div(right),
+                BinaryOp::Plus => left.try_add(&right),
+                BinaryOp::Minus => left.try_sub(&right),
+                BinaryOp::Multiply => left.try_mul(&right),
+                BinaryOp::Divide => left.try_div(&right),
+                BinaryOp::IntDivide => left.try_int_div(&right),
                 BinaryOp::EqualEqual => left.try_equal(&right),
                 BinaryOp::AndAnd => left.try_and(&right),
                 BinaryOp::OrOr => left.try_or(&right),
             }
         }
         Expr::Unary(unary_op, expr) => match unary_op {
-            UnaryOp::ExclamationMark => eval_value(&*expr, snapshot)?.try_exclaim(),
-            UnaryOp::Minus => eval_value(&*expr, snapshot)?.try_negate(),
+            UnaryOp::ExclamationMark => eval_value(&*expr, snapshot, overrides)?.try_exclaim(),
+            UnaryOp::Minus => eval_value(&*expr, snapshot, overrides)?.try_negate(),
         },
-        Expr::Call((ident, _), args) => {
-            let arg_values = args
+        Expr::Call(expr, args) => {
+            let left = eval_value(expr.as_ref(), snapshot, overrides)?;
+            let func = left.as_function()?;
+
+            let arg_values: Vec<Value> = args
                 .into_iter()
-                .map(|arg| eval_value(arg, snapshot))
+                .map(|arg| eval_value(arg, snapshot, overrides))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            if let Some((associated_snap, native_func)) = snapshot.resolve_ident_and_source(ident)
-                && let TypedValue::Function(func) = native_func.consume().val
-            {
-                match func {
-                    Function::Native(func) => func(arg_values),
-                    Function::UserFunction(FunctionExpr { args, body }) => {
-                        Args::exactly(args.len(), &arg_values)?;
-                        let overrides = args
-                            .into_iter()
-                            .zip(arg_values)
-                            .map(|((arg_ident, _), arg_value)| {
-                                StateMutation::new(arg_ident, MutabilityGuard::Mutable(arg_value))
-                            })
-                            .collect::<VecChangeset<_>>();
+            match func {
+                Function::Native(func) => func(arg_values),
+                Function::UserFunction {
+                    captures,
+                    expr: FunctionExpr { args, body },
+                } => {
+                    Args::exactly(args.len(), &arg_values)?;
 
-                        return eval_value(&body, &associated_snap.with(&overrides));
-                    }
+                    let arg_changeset = args
+                        .into_iter()
+                        .zip(arg_values)
+                        // TODO: Unnessecary cloning blurgh
+                        .map(|((arg_ident, _), arg_value)| {
+                            StateMutation::new(
+                                arg_ident.clone(),
+                                MutabilityGuard::Mutable(arg_value),
+                            )
+                        })
+                        .chain(captures.into_iter().map(|x| x.clone()))
+                        .collect::<Vec<_>>();
+                    eval_value(&body, &snapshot, Some(&arg_changeset))
                 }
-            } else {
-                Err(())
             }
         }
         Expr::Ident((ident, _)) => snapshot
-            .resolve_ident(ident)
-            .map(|guard| guard.consume())
+            .resolve_ident(ident, overrides)
+            .map(|val| val.consume())
             .ok_or(()),
         Expr::Literal(literal) => Ok(match literal {
             Literal::Base10Decimal(decimal) => Value::new(
@@ -126,10 +177,23 @@ pub fn eval_value((expr, _): &Spanned<Expr>, snapshot: &Snapshot) -> Result<Valu
                 DisplayHint::Base2,
             ),
         }),
-        Expr::Parenthesised(expr) => eval_value(&*expr, snapshot),
+        Expr::Parenthesised(expr) => eval_value(&*expr, snapshot, overrides),
         Expr::NamedFunction(_, _) => Err(()),
-        Expr::AnonymousFunction((func, _)) => {
-            Ok(Value::function(Function::UserFunction(func.clone())))
+        Expr::AnonymousFunction(func) => {
+            let captures = calculate_captures_func(func, HashSet::new())
+                .iter()
+                .map(|ident| {
+                    snapshot
+                        .resolve_ident(ident, overrides)
+                        .map(move |val| StateMutation::new(ident.clone(), val))
+                })
+                .collect::<Option<Vec<_>>>()
+                .ok_or(())?;
+
+            Ok(Value::function(Function::UserFunction {
+                captures: captures,
+                expr: func.0.clone(),
+            }))
         }
     }
 }
@@ -142,22 +206,31 @@ pub fn eval(expr: &Spanned<Expr>, snapshot: &Snapshot) -> Result<Eval, ()> {
             return match left {
                 Expr::Ident((ident, _)) => Ok(Eval::ValueAssignment(
                     ident.to_string(),
-                    eval_value(right, snapshot)?,
+                    eval_value(right, snapshot, None)?,
                 )),
                 _ => Err(()), // Only idents can be assigned currently
             };
-            // let right = self.eval(&*right)?;
-            // return;
         }
-        Expr::NamedFunction((name, _), (func, _)) => {
+        Expr::NamedFunction((name, _), func) => {
+            let captures = calculate_captures_func(func, HashSet::new())
+                .into_iter()
+                .map(|ident| {
+                    snapshot
+                        .resolve_ident::<VecChangeset<_>>(&ident, None)
+                        .map(move |val| StateMutation::new(ident, val))
+                })
+                .collect::<Option<Vec<_>>>()
+                .ok_or(())?;
             return Ok(Eval::ValueAssignment(
                 name.to_string(),
-                Value::function(Function::UserFunction(func.clone())),
+                Value::function(Function::UserFunction {
+                    captures,
+                    expr: func.0.to_owned(),
+                }),
             ));
             //
         }
         _ => {}
     }
-
-    eval_value(expr, snapshot).map(Eval::Value)
+    eval_value(expr, snapshot, None).map(|val| Eval::Value(val))
 }

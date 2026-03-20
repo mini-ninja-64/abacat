@@ -67,7 +67,13 @@ impl Display for Value {
             (TypedValue::Number(Number::Integer(number)), _) => write!(f, "{}", number),
             (TypedValue::Boolean(bool), _) => write!(f, "{}", bool),
             (TypedValue::Function(Function::Native(_)), _) => write!(f, "Native Function"),
-            (TypedValue::Function(Function::UserFunction(_)), _) => write!(f, "User Function"),
+            (
+                TypedValue::Function(Function::UserFunction {
+                    captures: _,
+                    expr: _,
+                }),
+                _,
+            ) => write!(f, "User Function"),
         }
     }
 }
@@ -109,16 +115,23 @@ impl Value {
         }
     }
 
-    pub fn try_add(&self, right: Value) -> Result<Value, ()> {
+    pub fn as_function(&self) -> Result<&Function, ()> {
+        match &self.val {
+            TypedValue::Function(function) => Ok(function),
+            _ => Err(()),
+        }
+    }
+
+    pub fn try_add(&self, right: &Value) -> Result<Value, ()> {
         binary_maths!(self, checked_add, right)
     }
-    pub fn try_sub(&self, right: Value) -> Result<Value, ()> {
+    pub fn try_sub(&self, right: &Value) -> Result<Value, ()> {
         binary_maths!(self, checked_sub, right)
     }
-    pub fn try_mul(&self, right: Value) -> Result<Value, ()> {
+    pub fn try_mul(&self, right: &Value) -> Result<Value, ()> {
         binary_maths!(self, checked_mul, right)
     }
-    pub fn try_div(&self, right: Value) -> Result<Value, ()> {
+    pub fn try_div(&self, right: &Value) -> Result<Value, ()> {
         let left_num = self.as_number()?;
         let right_num = right.as_number()?;
 
@@ -158,7 +171,7 @@ impl Value {
         Ok(Value::boolean(self.val.checked_or(&right.val).ok_or(())?))
     }
 
-    pub fn try_int_div(&self, right: Value) -> Result<Value, ()> {
+    pub fn try_int_div(&self, right: &Value) -> Result<Value, ()> {
         let left_num = self.as_number()?;
         let right_num = right.as_number()?;
 

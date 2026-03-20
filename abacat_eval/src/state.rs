@@ -3,12 +3,13 @@ use std::marker::PhantomData;
 use abacat_common::mutability::MutabilityGuard;
 use abacat_parser::parser::parser::Ident;
 
-use crate::value::{native::NativeValue, Function, Value};
+use crate::value::{Function, Value, native::NativeValue};
 
 // TODO: MutabilityGuard could be genericised, e.g. make value V
+#[derive(Debug, Clone)]
 pub struct StateMutation<I> {
-    ident: I,
-    value: MutabilityGuard<Value>,
+    pub ident: I,
+    pub value: MutabilityGuard<Value>,
 }
 
 impl<I> StateMutation<I> {
@@ -17,6 +18,12 @@ impl<I> StateMutation<I> {
             ident: ident,
             value: value,
         };
+    }
+    pub fn map_ident<I2>(self, mapper: fn(I) -> I2) -> StateMutation<I2> {
+        StateMutation {
+            ident: mapper(self.ident),
+            value: self.value,
+        }
     }
 }
 
@@ -61,53 +68,52 @@ impl StateSource<String> for NativeChangeset {
     }
 }
 
-pub struct StateSnapshot<'a, I, O, IN, S>
+pub struct StateSnapshot<'a, I, IN, S>
 where
-    O: StateSource<I>,
     IN: StateSource<I>,
     S: StateSource<I>,
 {
-    overrides: Option<&'a O>,
     initial: &'a IN,
     changesets: &'a [S],
     phantom: PhantomData<I>,
 }
-impl<I, O, IN, S> StateSnapshot<'_, I, O, IN, S>
+impl<'a: 'b, 'b, I, IN, S> StateSnapshot<'a, I, IN, S>
 where
     IN: StateSource<I>,
     S: StateSource<I>,
-    O: StateSource<I>,
 {
-    pub fn with<'a: 'b, 'b>(&'a self, overrides: &'b O) -> StateSnapshot<'b, I, O, IN, S> {
-        StateSnapshot {
-            overrides: Some(overrides),
-            initial: self.initial,
-            changesets: self.changesets,
-            phantom: self.phantom,
-        }
-    }
-    pub fn new<'a>(initial: &'a IN, changesets: &'a [S]) -> StateSnapshot<'a, I, O, IN, S> {
+    // pub fn with(mut self, overrides: O) -> StateSnapshot<'a, I, O, IN, S>{
+    //     StateSnapshot {
+    //         overrides: self.overrides,
+    //         initial: self.initial,
+    //         changesets: self.changesets,
+    //         phantom: self.phantom,
+    //     }
+    // }
+    pub fn new(initial: &'a IN, changesets: &'a [S]) -> StateSnapshot<'a, I, IN, S> {
         StateSnapshot {
             initial: initial,
             changesets: changesets,
-            overrides: None,
             phantom: PhantomData::default(),
         }
     }
-    pub fn resolve_ident(&self, id: &I) -> Option<MutabilityGuard<Value>> {
-        self.resolve_ident_and_source(id).map(|(_, val)| val)
+    pub fn resolve_ident<O: StateSource<I>>(
+        &self,
+        id: &I,
+        overrides: Option<&O>,
+    ) -> Option<MutabilityGuard<Value>> {
+        self.resolve_ident_and_source(id, overrides)
+            .map(|(_, val)| val)
     }
 
-    pub fn resolve_ident_and_source<'a: 'b, 'b>(
+    pub fn resolve_ident_and_source<O: StateSource<I>>(
         &'a self,
         id: &I,
-    ) -> Option<(StateSnapshot<'b, I, O, IN, S>, MutabilityGuard<Value>)> {
-        self.overrides
-            .and_then(|overrides| {
-                overrides
-                    .resolve_ident(id)
-                    .map(|resolved| (StateSnapshot::new(self.initial, &self.changesets), resolved))
-            })
+        overrides: Option<&O>,
+    ) -> Option<(StateSnapshot<'b, I, IN, S>, MutabilityGuard<Value>)> {
+        overrides
+            .and_then(|ov| ov.resolve_ident(&id))
+            .map(|val| (StateSnapshot::new(self.initial, self.changesets), val))
             .or_else(|| {
                 self.changesets
                     .iter()
@@ -129,24 +135,22 @@ where
     }
 }
 
-pub struct State<I = Ident, O = VecChangeset<I>, IN = NativeChangeset, S = VecChangeset<I>>
+pub struct State<I = Ident, IN = NativeChangeset, S = VecChangeset<I>>
 where
     IN: StateSource<I>,
     S: StateSource<I> + Sized, // T: StateSource + 'a,
-    O: StateSource<I>,
 {
     initial: IN,
     changesets: Vec<S>,
-    phantom: PhantomData<(I, O)>,
+    phantom: PhantomData<I>,
 }
 
-impl<'a: 'b, 'b, I, O, IN, S> State<I, O, IN, S>
+impl<'a: 'b, 'b, I, IN, S> State<I, IN, S>
 where
-    O: StateSource<I>,
     IN: StateSource<I>,
     S: StateSource<I> + Sized,
 {
-    pub fn new(initial: IN) -> State<I, O, IN, S> {
+    pub fn new(initial: IN) -> State<I, IN, S> {
         State {
             initial,
             changesets: Vec::new(),
@@ -156,7 +160,7 @@ where
     pub fn len(&self) -> usize {
         self.changesets.len()
     }
-    pub fn at(&'a self, expr_index: usize) -> Option<StateSnapshot<'b, I, O, IN, S>> {
+    pub fn at(&'a self, expr_index: usize) -> Option<StateSnapshot<'b, I, IN, S>> {
         if expr_index > self.len() {
             None
         } else {
@@ -166,7 +170,7 @@ where
             ))
         }
     }
-    pub fn last(&'a self) -> StateSnapshot<'b, I, O, IN, S> {
+    pub fn last(&'a self) -> StateSnapshot<'b, I, IN, S> {
         self.at(self.len()).unwrap()
     }
     pub fn publish(&mut self, changeset: S) {
@@ -182,7 +186,7 @@ mod tests {
 
     use crate::{
         state::{NativeChangeset, State, StateMutation},
-        value::{native::NATIVE_VALUES, Value},
+        value::{Value, native::NATIVE_VALUES},
     };
 
     // TODO: Better test name && structure && should check mutability guard
@@ -191,18 +195,23 @@ mod tests {
         let mut state: State = State::new(NativeChangeset::new(&NATIVE_VALUES));
         let value = state
             .last()
-            .resolve_ident(&"DECIMAL_MIN".to_string())
+            .resolve_ident::<NativeChangeset>(&"DECIMAL_MIN".to_string(), None)
             .unwrap();
-        assert!(value
-            .consume()
-            .checked_eq(&Value::decimal(Decimal::MIN))
-            .unwrap());
+        assert!(
+            value
+                .consume()
+                .checked_eq(&Value::decimal(Decimal::MIN))
+                .unwrap()
+        );
 
         state.publish(vec![StateMutation::new(
             "test1".to_string(),
             MutabilityGuard::Mutable(Value::boolean(true)),
         )]);
-        let value = state.last().resolve_ident(&"test1".to_string()).unwrap();
+        let value = state
+            .last()
+            .resolve_ident::<NativeChangeset>(&"test1".to_string(), None)
+            .unwrap();
         assert!(value.consume().checked_eq(&Value::boolean(true)).unwrap());
 
         state.publish(vec![StateMutation::new(
@@ -210,19 +219,27 @@ mod tests {
             MutabilityGuard::Immutable(Value::boolean(false)),
         )]);
 
-        let value = state.last().resolve_ident(&"test2".to_string()).unwrap();
+        let value = state
+            .last()
+            .resolve_ident::<NativeChangeset>(&"test2".to_string(), None)
+            .unwrap();
         assert!(value.consume().checked_eq(&Value::boolean(false)).unwrap());
 
-        let value = state.last().resolve_ident(&"test1".to_string()).unwrap();
+        let value = state
+            .last()
+            .resolve_ident::<NativeChangeset>(&"test1".to_string(), None)
+            .unwrap();
         assert!(value.consume().checked_eq(&Value::boolean(true)).unwrap());
 
         let value = state
             .last()
-            .resolve_ident(&"DECIMAL_MIN".to_string())
+            .resolve_ident::<NativeChangeset>(&"DECIMAL_MIN".to_string(), None)
             .unwrap();
-        assert!(value
-            .consume()
-            .checked_eq(&Value::decimal(Decimal::MIN))
-            .unwrap());
+        assert!(
+            value
+                .consume()
+                .checked_eq(&Value::decimal(Decimal::MIN))
+                .unwrap()
+        );
     }
 }
