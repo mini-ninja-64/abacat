@@ -31,6 +31,7 @@ pub enum Token<'src> {
     Divide,
     IntDivide,
     Equal,
+    Pipe,
     Arrow,
 
     // Comparators
@@ -101,6 +102,7 @@ pub fn lexer<'src>() -> impl Parser<
         just(")").map(|_| Token::RightParens),
         just(",").map(|_| Token::Comma),
         just("&&").map(|_| Token::AndAnd),
+        just("|>").map(|_| Token::Pipe),
         just("||").map(|_| Token::OrOr),
         just("=>").map(|_| Token::Arrow),
         just("==").map(|_| Token::EqualEqual),

@@ -88,6 +88,34 @@ impl<'a> CheckedEq<&Eval> for Eval {
     }
 }
 
+pub fn exec_func(
+    func: &Function,
+    arg_values: Vec<Value>,
+    snapshot: &Snapshot,
+) -> Result<Value, ()> {
+    match func {
+        Function::Native(func) => func(&arg_values),
+        Function::UserFunction {
+            captures,
+            expr: FunctionExpr { args, body },
+        } => {
+            Args::exactly(args.len(), &arg_values)?;
+
+            // TODO: Collecting before this just to convert to a vec again here
+            let arg_changeset = args
+                .into_iter()
+                .zip(arg_values)
+                // TODO: Unnessecary cloning blurgh
+                .map(|((arg_ident, _), arg_value)| {
+                    StateMutation::new(arg_ident.clone(), MutabilityGuard::Mutable(arg_value))
+                })
+                .chain(captures.into_iter().map(|x| x.clone()))
+                .collect::<Vec<_>>();
+            eval_value(&body, &snapshot, Some(&arg_changeset))
+        }
+    }
+}
+
 // TODO: Make eval funcs more generic
 pub type Snapshot<'a> = StateSnapshot<'a, String, NativeChangeset, Vec<StateMutation<String>>>;
 
@@ -97,9 +125,29 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
     overrides: Option<&VecChangeset<String>>,
 ) -> Result<Value, ()> {
     match &expr {
-        Expr::Binary(left, op, right) => {
-            let right = eval_value(&*right, snapshot, overrides)?;
+        Expr::Binary(left, BinaryOp::Pipe, right) => {
             let left = eval_value(&*left, snapshot, overrides)?;
+            if let Expr::Call(func_expr, args) = &right.0 {
+                let func_val = eval_value(&*func_expr, snapshot, overrides)?;
+                let func = func_val.as_function()?;
+                let arg_values = args
+                    .into_iter()
+                    .map(|arg| eval_value(arg, snapshot, overrides));
+                let args = [Ok(left)]
+                    .into_iter()
+                    .chain(arg_values)
+                    .collect::<Result<Vec<_>, ()>>()?;
+                exec_func(&*func, args, snapshot)
+            } else {
+                let right = eval_value(&*right, snapshot, overrides)?;
+                let func = right.as_function()?;
+                let args = vec![left];
+                exec_func(func, args, snapshot)
+            }
+        }
+        Expr::Binary(left, op, right) => {
+            let left = eval_value(&*left, snapshot, overrides)?;
+            let right = eval_value(&*right, snapshot, overrides)?;
 
             match op {
                 BinaryOp::Equal => Err(()),
@@ -111,6 +159,7 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
                 BinaryOp::EqualEqual => left.try_equal(&right),
                 BinaryOp::AndAnd => left.try_and(&right),
                 BinaryOp::OrOr => left.try_or(&right),
+                BinaryOp::Pipe => Err(()), // TODO: bug in code
             }
         }
         Expr::Unary(unary_op, expr) => match unary_op {
@@ -125,30 +174,7 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
                 .into_iter()
                 .map(|arg| eval_value(arg, snapshot, overrides))
                 .collect::<Result<Vec<_>, _>>()?;
-
-            match func {
-                Function::Native(func) => func(arg_values),
-                Function::UserFunction {
-                    captures,
-                    expr: FunctionExpr { args, body },
-                } => {
-                    Args::exactly(args.len(), &arg_values)?;
-
-                    let arg_changeset = args
-                        .into_iter()
-                        .zip(arg_values)
-                        // TODO: Unnessecary cloning blurgh
-                        .map(|((arg_ident, _), arg_value)| {
-                            StateMutation::new(
-                                arg_ident.clone(),
-                                MutabilityGuard::Mutable(arg_value),
-                            )
-                        })
-                        .chain(captures.into_iter().map(|x| x.clone()))
-                        .collect::<Vec<_>>();
-                    eval_value(&body, &snapshot, Some(&arg_changeset))
-                }
-            }
+            exec_func(func, arg_values, snapshot)
         }
         Expr::Ident((ident, _)) => snapshot
             .resolve_ident(ident, overrides)

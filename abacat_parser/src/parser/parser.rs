@@ -28,6 +28,7 @@ pub enum BinaryOp {
     EqualEqual,
     AndAnd,
     OrOr,
+    Pipe,
 }
 
 // TODO: Interning, complex cos repl model means history can change
@@ -147,6 +148,12 @@ where
             }),
             prefix(4, just(Token::ExclamationMark), |_, r, e| {
                 (Expr::Unary(UnaryOp::ExclamationMark, Box::new(r)), e.span())
+            }),
+            infix(left(0), just(Token::Pipe), |l, _, r, e| {
+                (
+                    Expr::Binary(Box::new(l), BinaryOp::Pipe, Box::new(r)),
+                    e.span(),
+                )
             }),
             infix(left(0), just(Token::Equal), |l, _, r, e| {
                 (

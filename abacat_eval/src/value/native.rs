@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 
 use crate::value::{DisplayHint, Value, function::Args};
 
-pub type NativeFunctionPointer = fn(args: Vec<Value>) -> Result<Value, ()>;
+pub type NativeFunctionPointer = fn(args: &Vec<Value>) -> Result<Value, ()>;
 
 pub enum NativeValue {
     Function(NativeFunctionPointer),
@@ -12,25 +12,25 @@ pub enum NativeValue {
 
 pub const NATIVE_VALUES: phf::Map<&str, NativeValue> = phf_map! {
     "testFuncTrue" => NativeValue::Function(|args| {
-        Args::exactly(0, &args)?;
+        Args::exactly(0, args)?;
         Ok(Value::boolean(true))
     }),
     "testFuncFalse" => NativeValue::Function(|_| Ok(Value::boolean(false))),
     // Representaion
     "bin" => NativeValue::Function(|args| {
-        Args::exactly(1, &args)?;
+        Args::exactly(1, args)?;
         Ok(args[0].with_display_hint(DisplayHint::Base2))
     }),
     "hex" => NativeValue::Function(|args| {
-        Args::exactly(1, &args)?;
+        Args::exactly(1, args)?;
         Ok(args[0].with_display_hint(DisplayHint::Base16))
     }),
     "dec" => NativeValue::Function(|args| {
-        Args::exactly(1, &args)?;
+        Args::exactly(1, args)?;
         Ok(args[0].with_display_hint(DisplayHint::Base10))
     }),
     "oct" => NativeValue::Function(|args| {
-        Args::exactly(1, &args)?;
+        Args::exactly(1, args)?;
         Ok(args[0].with_display_hint(DisplayHint::Base8))
     }),
     // Note: Should probs make a macro for this, prevents need for below unit test
