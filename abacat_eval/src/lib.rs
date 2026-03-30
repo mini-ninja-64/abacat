@@ -40,7 +40,7 @@ mod tests {
         use crate::document::Document;
 
         let mut doc = Document::new_with_default_constants();
-        let result = doc.next(parse(statement).unwrap()).unwrap();
+        let result = doc.next(parse(statement).map_err(|_| ())).unwrap();
         assert!(result.checked_eq(&expected).unwrap());
     }
 
@@ -55,12 +55,32 @@ mod tests {
         // println!("{:?}", y);
     }
 
+    // TODO: Assertions
+    #[rstest]
+    fn xyz() {
+        let mut doc = Document::new_with_default_constants();
+
+        let v = vec!["x = 123", "x = x + 456", "ans"];
+        for expr in v {
+            doc.next(parse(expr).map_err(|_| ())).unwrap();
+        }
+        doc.replace_at(0, parse("x = 1").map_err(|_| ()));
+
+        for (expr, eval) in doc.history() {
+            let expr = expr.as_ref().unwrap();
+            let e = eval.as_ref().unwrap();
+            match e {
+                Eval::Value(value) => println!("'{:?}' = {:?}", expr, value),
+                _ => println!("'{:?}'", expr),
+            }
+        }
+    }
+
+    // TODO: Assertions
     #[rstest]
     fn fun_test() {
         let mut doc = Document::new_with_default_constants();
 
-        // let result = doc.next(parse("testFuncTrue() || false").unwrap()).unwrap();
-        // println!("{:?}", result);
         let v = vec![
             "x = 123",
             "def testy() = x",
@@ -73,7 +93,7 @@ mod tests {
             "negate(true)",
         ];
         for expr in v {
-            let eval = doc.next(parse(expr).unwrap()).unwrap();
+            let eval = doc.next(parse(expr).map_err(|_| ())).unwrap();
             match eval {
                 Eval::Value(value) => println!("'{}' = {:?}", expr, value),
                 _ => println!("'{}'", expr),
@@ -85,16 +105,20 @@ mod tests {
     fn assignments_mutate_state() {
         let mut doc = Document::new_with_default_constants();
 
-        let result = doc.next(parse("x = 0x05").unwrap()).unwrap();
-        assert!(result
-            .checked_eq(&Eval::ValueAssignment(
-                "x".to_string(),
-                Value::integer(5, DisplayHint::Base16)
-            ))
-            .unwrap());
-        let result = doc.next(parse("x + 6").unwrap()).unwrap();
-        assert!(result
-            .checked_eq(&Eval::Value(Value::integer(11, DisplayHint::Base16)))
-            .unwrap());
+        let result = doc.next(parse("x = 0x05").map_err(|_| ())).unwrap();
+        assert!(
+            result
+                .checked_eq(&Eval::ValueAssignment(
+                    "x".to_string(),
+                    Value::integer(5, DisplayHint::Base16)
+                ))
+                .unwrap()
+        );
+        let result = doc.next(parse("x + 6").map_err(|_| ())).unwrap();
+        assert!(
+            result
+                .checked_eq(&Eval::Value(Value::integer(11, DisplayHint::Base16)))
+                .unwrap()
+        );
     }
 }

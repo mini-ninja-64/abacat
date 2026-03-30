@@ -13,10 +13,19 @@ use crate::{
 use abacat_common::checked::CheckedEq;
 use abacat_parser::parser::parser::Ident;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Eval {
     Value(Value),
     ValueAssignment(Ident, Value),
+}
+
+impl Eval {
+    pub fn value(&self) -> &Value {
+        match self {
+            Eval::Value(value) => value,
+            Eval::ValueAssignment(_, value) => value,
+        }
+    }
 }
 
 fn calculate_captures_func(
@@ -117,7 +126,8 @@ pub fn exec_func(
 }
 
 // TODO: Make eval funcs more generic
-pub type Snapshot<'a> = StateSnapshot<'a, String, NativeChangeset, Vec<StateMutation<String>>>;
+pub type Snapshot<'a> =
+    StateSnapshot<'a, String, NativeChangeset, (Result<Spanned<Expr>, ()>, Result<Eval, ()>)>;
 
 pub fn eval_value<'a, 'b: 'c, 'c>(
     (expr, _): &'a Spanned<Expr>,

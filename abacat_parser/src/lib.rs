@@ -1,6 +1,6 @@
 use abacat_common::ariadne::generate_reports;
 use ariadne::sources;
-use chumsky::{input::Input, span::SimpleSpan, Parser};
+use chumsky::{Parser, input::Input, span::SimpleSpan};
 
 use crate::parser::parser::Expr;
 
@@ -13,6 +13,10 @@ pub type Spanned<T> = (T, Span);
 // TODO: Proper error types in a way we can still get the ariadne info
 pub fn parse<'a>(expr: &'a str) -> Result<(Expr, SimpleSpan), String> {
     let source_name = "";
+
+    // if expr.chars().all(|c| c.is_whitespace()) {
+    //     return Ok((Expr::Nothing, SimpleSpan::new(0usize, expr.len())));
+    // }
 
     let lex_result: chumsky::ParseResult<
         Vec<(lexer::token::Token<'_>, SimpleSpan)>,
@@ -48,6 +52,17 @@ pub fn parse<'a>(expr: &'a str) -> Result<(Expr, SimpleSpan), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_works() {
+        // let x = parse("45+12-35*(88+*2)");
+        let r = parse("").unwrap();
+        println!("{:?}", r);
+        // for report in generate_reports(source_name, result.errors()) {
+        //     let cache = sources(vec![(source_name, expr)]);
+        //     report.eprint(cache).unwrap();
+        // }
+    }
 
     #[test]
     fn it_works() {

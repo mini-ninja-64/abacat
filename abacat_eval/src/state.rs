@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use abacat_common::mutability::MutabilityGuard;
 use abacat_parser::parser::parser::Ident;
@@ -51,6 +51,13 @@ where
 pub struct NativeChangeset {
     phf: &'static phf::Map<&'static str, NativeValue>,
 }
+
+impl Debug for NativeChangeset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NativeChangeset").finish()
+    }
+}
+
 impl NativeChangeset {
     pub fn new(phf: &'static phf::Map<&'static str, NativeValue>) -> NativeChangeset {
         NativeChangeset { phf }
@@ -74,7 +81,7 @@ where
     S: StateSource<I>,
 {
     initial: &'a IN,
-    changesets: &'a [S],
+    sources: &'a [S],
     phantom: PhantomData<I>,
 }
 impl<'a: 'b, 'b, I, IN, S> StateSnapshot<'a, I, IN, S>
@@ -90,10 +97,10 @@ where
     //         phantom: self.phantom,
     //     }
     // }
-    pub fn new(initial: &'a IN, changesets: &'a [S]) -> StateSnapshot<'a, I, IN, S> {
+    pub fn new(initial: &'a IN, sources: &'a [S]) -> StateSnapshot<'a, I, IN, S> {
         StateSnapshot {
             initial: initial,
-            changesets: changesets,
+            sources,
             phantom: PhantomData::default(),
         }
     }
@@ -113,16 +120,16 @@ where
     ) -> Option<(StateSnapshot<'b, I, IN, S>, MutabilityGuard<Value>)> {
         overrides
             .and_then(|ov| ov.resolve_ident(&id))
-            .map(|val| (StateSnapshot::new(self.initial, self.changesets), val))
+            .map(|val| (StateSnapshot::new(self.initial, self.sources), val))
             .or_else(|| {
-                self.changesets
+                self.sources
                     .iter()
                     .enumerate()
                     .rev()
                     .find_map(|(pos, source)| source.resolve_ident(&id).map(move |val| (pos, val)))
                     .map(|(pos, value)| {
                         (
-                            StateSnapshot::new(self.initial, &self.changesets[0..pos]),
+                            StateSnapshot::new(self.initial, &self.sources[0..pos]),
                             value,
                         )
                     })
@@ -135,6 +142,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct State<I = Ident, IN = NativeChangeset, S = VecChangeset<I>>
 where
     IN: StateSource<I>,
@@ -170,11 +178,23 @@ where
             ))
         }
     }
+    pub fn replace_at(&mut self, index: usize, changeset: S) {
+        self.changesets[index] = changeset;
+    }
     pub fn last(&'a self) -> StateSnapshot<'b, I, IN, S> {
         self.at(self.len()).unwrap()
     }
     pub fn publish(&mut self, changeset: S) {
         self.changesets.push(changeset);
+    }
+    pub fn rollback_to(&mut self, index: usize) {
+        self.len();
+        let empty: [S; 0] = [];
+        self.changesets
+            .splice(index..self.changesets.len(), empty.into_iter());
+    }
+    pub fn changesets(&self) -> &[S] {
+        &self.changesets
     }
 }
 

@@ -6,4 +6,8 @@ edition = "2024"
 [dependencies]
 ariadne = "0.6.0"
 chumsky = "1.0.0-alpha.8"
+cxx = "1.0.194"
 num-traits = "0.2.19"
+regex = "1.12.3"
+saphyr = "0.0.6"
+thiserror = "2.0.18"
