@@ -9,7 +9,7 @@ import zone.minis.abacat 1.0
 ApplicationWindow {
     id: root
     height: 480
-    title: qsTr("Hello World")
+    title: qsTr("abacat")
     visible: true
     width: 640
 
