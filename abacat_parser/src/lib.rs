@@ -12,7 +12,7 @@ pub type Spanned<T> = (T, Span);
 
 // TODO: Proper error types in a way we can still get the ariadne info
 pub fn parse<'a>(expr: &'a str) -> Result<(Expr, SimpleSpan), String> {
-    let source_name = "";
+    let _source_name = "";
 
     // if expr.chars().all(|c| c.is_whitespace()) {
     //     return Ok((Expr::Nothing, SimpleSpan::new(0usize, expr.len())));
@@ -24,10 +24,10 @@ pub fn parse<'a>(expr: &'a str) -> Result<(Expr, SimpleSpan), String> {
     > = lexer::lex(expr);
 
     if lex_result.has_errors() {
-        for report in generate_reports(source_name, lex_result.errors()) {
-            let cache = sources(vec![(source_name, expr)]);
-            report.eprint(cache).unwrap();
-        }
+        // for report in generate_reports(source_name, lex_result.errors()) {
+        //     let cache = sources(vec![(source_name, expr)]);
+        //     report.eprint(cache).unwrap();
+        // }
         return Err("problem lexing :c".to_owned());
     }
 
@@ -39,10 +39,10 @@ pub fn parse<'a>(expr: &'a str) -> Result<(Expr, SimpleSpan), String> {
                 .map((expr.len()..expr.len()).into(), |(t, s)| (t, s)),
         );
     if result.has_errors() {
-        for report in generate_reports(source_name, result.errors()) {
-            let cache = sources(vec![(source_name, expr)]);
-            report.eprint(cache).unwrap();
-        }
+        // for report in generate_reports(source_name, result.errors()) {
+        //     let cache = sources(vec![(source_name, expr)]);
+        //     report.eprint(cache).unwrap();
+        // }
         return Err("problem parsing :c".to_owned());
     }
     let (result, _) = result.unwrap();

@@ -1,23 +1,10 @@
-use abacat_common::ui::{
-    builtin::{SyntaxHighlightType, basic_theme, highlight},
-    theme::Theme,
-};
+use abacat_common::ui::{builtin::basic_theme, theme::Theme};
 use abacat_eval::{document::Document, eval::Eval};
 use abacat_parser::parse;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QColor, QList, QModelIndex, QString, QVariant};
 use qobject::*;
 use std::pin::Pin;
-
-macro_rules! format_span {
-    ($match: ident, $color_source: expr) => {{
-        let color = &$color_source;
-        format!(
-            "<span style='color:rgb({}, {}, {});'>{}</span>",
-            color.red, color.green, color.blue, $match
-        )
-    }};
-}
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -55,6 +42,8 @@ pub mod qobject {
         Expression,
         Answer,
     }
+
+    // unsafe extern "RustQt" {}
 
     unsafe extern "RustQt" {
         #[qobject]
@@ -110,15 +99,22 @@ pub mod qobject {
 
         #[qinvokable]
         #[cxx_name = "insertRow"]
-        fn insert_row(self: Pin<&mut MyObject>, row: usize, value: &QString, parent: &QModelIndex);
+        fn insert_row(self: Pin<&mut MyObject>, row: usize, value: &QString);
 
-        #[qinvokable]
-        #[cxx_name = "syntaxHighlight"]
-        fn syntax_highlight(self: &MyObject, str: &QString) -> QString;
-
+        // TODO: need a way to force re-render, investigate signals and such
         #[qinvokable]
         #[cxx_name = "backgroundColor"]
         fn background_color(self: &MyObject) -> QColor;
+
+        // TODO: need a way to force re-render, investigate signals and such
+        #[qinvokable]
+        #[cxx_name = "answerOpacity"]
+        fn answer_opacity(self: &MyObject) -> f64;
+
+        // TODO: need a way to force re-render, investigate signals and such or just make a property
+        #[qinvokable]
+        #[cxx_name = "plainTextColor"]
+        fn plain_text_color(self: &MyObject) -> QColor;
     }
 }
 
@@ -151,23 +147,20 @@ impl Default for MyObjectRust {
     }
 }
 
-impl MyObjectRust {
-    pub fn refresh_rows_cache(&mut self, from: usize) {
+impl qobject::MyObject {
+    pub fn refresh_rows_cache(mut self: Pin<&mut Self>, from: usize) {
         for i in from..self.list.len() {
             let (_, result) = &self.document.history_at(i).unwrap();
 
             let ans: Option<QString> = match result {
-                Ok(Eval::ValueAssignment(_, val)) => Some(format!("{}", val).into()),
-                Ok(Eval::Value(val)) => Some(format!("{}", val).into()),
+                Ok(eval) => Some(format!("{}", eval.value()).into()),
                 Err(_) => None,
             };
 
-            self.list[i].answer = ans;
+            self.as_mut().rust_mut().list[i].answer = ans;
         }
     }
-}
 
-impl qobject::MyObject {
     fn row_count(&self, _parent: &QModelIndex) -> i32 {
         self.document.history_len() as i32
     }
@@ -197,6 +190,7 @@ impl qobject::MyObject {
         new_data: &QString,
         parent: &QModelIndex,
     ) {
+        // println!("row: {}, new_data: {}", line, new_data);
         let current_row = &self.list[line];
         if current_row.data == *new_data {
             return;
@@ -211,8 +205,6 @@ impl qobject::MyObject {
 
             let row_mut = &mut self_mut.list[line];
             row_mut.data = new_data.clone();
-
-            self_mut.refresh_rows_cache(line);
         } else {
             let self_mut = &mut self.as_mut().rust_mut();
             self_mut.document.replace_at(line, parsed.map_err(|_| ()));
@@ -220,6 +212,7 @@ impl qobject::MyObject {
             let current = &mut self.as_mut().rust_mut();
             current.list[line] = RowData::new(new_data.clone());
         }
+        self.as_mut().refresh_rows_cache(line);
 
         // TODO: Move to common ref
         let roles: QList<i32> = vec![MyElementRole::Answer.repr].into();
@@ -240,63 +233,30 @@ impl qobject::MyObject {
         }
     }
 
-    pub fn insert_row(
-        mut self: Pin<&mut Self>,
-        row: usize,
-        new_row: &QString,
-        parent: &QModelIndex,
-    ) {
-        let length = self.document.history_len();
-
+    pub fn insert_row(mut self: Pin<&mut Self>, row: usize, new_row: &QString) {
+        let parent = QModelIndex::default();
         self.as_mut()
-            .begin_insert_rows(&parent, row as i32, length as i32);
+            .begin_insert_rows(&parent, row as i32, row as i32);
 
         let parsed = parse(new_row.to_string().as_str()).map_err(|_| ());
         let self_mut = &mut self.as_mut().rust_mut();
         self_mut.document.insert_at(row, parsed);
         self_mut.list.insert(row, RowData::new(new_row.clone()));
 
-        self_mut.refresh_rows_cache(row);
-
+        self.as_mut().refresh_rows_cache(0);
         self.as_mut().end_insert_rows();
     }
 
-    pub fn syntax_highlight(self: &MyObject, str: &QString) -> QString {
-        let str = str.to_string();
-        let str = str.as_str();
-        let replacer = |m: &str, syntax_type: SyntaxHighlightType| -> String {
-            match syntax_type {
-                abacat_common::ui::builtin::SyntaxHighlightType::Boolean => {
-                    format_span!(m, self.theme.design.boolean)
-                }
-                abacat_common::ui::builtin::SyntaxHighlightType::Identifier => {
-                    format_span!(m, self.theme.design.identifier)
-                }
-                abacat_common::ui::builtin::SyntaxHighlightType::Base2 => {
-                    format_span!(m, self.theme.design.base2)
-                }
-                abacat_common::ui::builtin::SyntaxHighlightType::Base8 => {
-                    format_span!(m, self.theme.design.base8)
-                }
-                abacat_common::ui::builtin::SyntaxHighlightType::Base10 => {
-                    format_span!(m, self.theme.design.base10)
-                }
-                abacat_common::ui::builtin::SyntaxHighlightType::Base10Decimal => {
-                    format_span!(m, self.theme.design.base10_decimal)
-                }
-                abacat_common::ui::builtin::SyntaxHighlightType::Base16 => {
-                    format_span!(m, self.theme.design.base16)
-                }
-                abacat_common::ui::builtin::SyntaxHighlightType::Other => {
-                    format_span!(m, self.theme.design.plain_text)
-                }
-            }
-        };
-        highlight(str, replacer).into()
-    }
-    // TODO: need a way to force re-render, investigate signals and such
     pub fn background_color(self: &MyObject) -> QColor {
         let bg = &self.theme.design.background;
         QColor::from_rgb(bg.red as i32, bg.green as i32, bg.blue as i32)
+    }
+    pub fn answer_opacity(self: &MyObject) -> f64 {
+        self.theme.design.answer_opacity
+    }
+
+    pub fn plain_text_color(self: &MyObject) -> QColor {
+        let color = &self.theme.design.plain_text;
+        QColor::from_rgb(color.red as i32, color.green as i32, color.blue as i32)
     }
 }

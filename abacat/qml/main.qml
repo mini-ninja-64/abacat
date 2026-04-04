@@ -40,7 +40,6 @@ ApplicationWindow {
 
             spacing: 0
             focus: true
-            clip: true
             model: myObject
             KeyNavigation.priority: KeyNavigation.BeforeItem
 
@@ -49,9 +48,6 @@ ApplicationWindow {
                 required property int index
                 required property string expression
                 required property var answer
-                // property var nextSection
-                // property var previousSection
-
                 required property var model
 
                 spacing: 10
@@ -60,7 +56,7 @@ ApplicationWindow {
                     leftPadding: 2
                     rightPadding: 2
                     width: 50
-                    color: palette.text
+                    color: myObject.plainTextColor()
                     font.family: "Monaco"
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignRight
@@ -72,21 +68,22 @@ ApplicationWindow {
                 }
 
                 TextEdit {
+                    id: textEditLine
                     property bool processing: false
+
                     // width: 10
                     // Layout.fillWidth: true
 
-                    color: palette.text
+                    color: myObject.plainTextColor()
                     selectedTextColor: palette.highlightedText
                     font.family: "Monaco"
-                    textFormat: TextEdit.RichText
                     text: expression
                     width: listView.maxTextWidth < listView.minimumTextEditWidth ? listView.minimumTextEditWidth : listView.maxTextWidth
 
                     onFocusChanged: focused => {
                         if (focused) {
                             myObject.setLine(index);
-                            // move cursor to end
+                            // move cursor to end??
                         }
                     }
 
@@ -108,7 +105,7 @@ ApplicationWindow {
                     }
                     Keys.onReturnPressed: event => {
                         event.accepted = true;
-                        myObject.insertRow(index + 1, "", myObject.index(index + 1, 0));
+                        myObject.insertRow(index + 1, "");
                         moveDown();
                     }
                     Keys.onUpPressed: moveUp()
@@ -116,12 +113,17 @@ ApplicationWindow {
 
                     KeyNavigation.priority: KeyNavigation.BeforeItem
 
+                    Keys.onPressed: event => {
+                        if ((event.key === Qt.Key_Backspace) && (event.modifiers & Qt.ControlModifier)) {
+                            textEditLine.text = "";
+                            event.accepted = true;
+                        }
+                    }
                     focus: myObject.currentLine === index
                     activeFocusOnPress: true
                     activeFocusOnTab: true
                     focusPolicy: Qt.TabFocus
                     onTextChanged: {
-                        // console.log(Object.keys(parent.parent));
                         const content = getText(0, length);
                         myObject.setExpr(index, content, myObject.index(index, 0));
 
@@ -139,46 +141,44 @@ ApplicationWindow {
                             }
                             listView.maxTextWidth = maxStrWidth;
                         }
-
-                        // TODO: blerguhhhh dont like this, maybe move to rust layer??? is QSyntaxHighlighter usable?
-                        if (!processing) {
-                            processing = true;
-                            let p = cursorPosition;
-                            text = myObject.syntaxHighlight(content);
-                            cursorPosition = p;
-                            processing = false;
-                        }
                     }
+                }
+                QmlAbacatSyntaxHighlighter {
+                    input_document: textEditLine.textDocument
                 }
 
                 // TODO: MOVE TO DUNAMIC COMPONENT WIV LOADER
                 Text {
-                    color: palette.text
+                    opacity: myObject.answerOpacity()
                     font.family: "Monaco"
                     leftPadding: 2
                     rightPadding: 2
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignRight
+                    color: myObject.plainTextColor()
                     // anchors.verticalCenter: parent.verticalCenter
 
                     text: answer === undefined ? "" : "="
                 }
-                TextEdit {
-                    property bool processing: false
 
-                    color: palette.text
+                TextEdit {
+                    id: textEditAnswer
+                    property bool processing: false
+                    opacity: myObject.answerOpacity()
                     font.family: "Monaco"
                     leftPadding: 2
                     rightPadding: 2
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignRight
+                    color: myObject.plainTextColor()
                     // anchors.verticalCenter: parent.verticalCenter
 
                     text: answer === undefined ? "" : answer
                     readOnly: true
                     selectByMouse: true
-                    textFormat: TextEdit.RichText
-                    // TODO: Syntax Highlighting
+                }
+                QmlAbacatSyntaxHighlighter {
+                    input_document: textEditAnswer.textDocument
                 }
             }
         }

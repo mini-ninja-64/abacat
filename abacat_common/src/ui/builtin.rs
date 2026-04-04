@@ -1,4 +1,4 @@
-use std::cell::LazyCell;
+use std::{cell::LazyCell, ops::Range};
 
 use regex::{Captures, Regex};
 
@@ -15,19 +15,21 @@ pub enum SyntaxHighlightType {
     Other,
 }
 
-const SYNTAX_HIGHLIGHTER: LazyCell<Regex> = LazyCell::new(|| {
-    Regex::new(r"(true|false)|([a-zA-Z_][a-zA-Z0-9_]*)|(0x[0-9a-fA-F]+)|(0b[10]+)|(0o[0-7]+)|([0-9]+\.[0-9]+)|([0-9]*)").unwrap()
+pub struct Highlighter {
+    regex: Regex,
+}
+
+pub const HIGHLIGHTER: LazyCell<Highlighter> = LazyCell::new(|| {
+    Highlighter { 
+        regex: Regex::new(r"(true|false)|([a-zA-Z_][a-zA-Z0-9_]*)|(0x[0-9a-fA-F]+)|(0b[10]+)|(0o[0-7]+)|([0-9]+\.[0-9]+)|([0-9]*)").unwrap()
+    }
 });
 
-pub fn highlight<F>(str: &str, replacer: F) -> String
-where
-    F: Fn(&str, SyntaxHighlightType) -> String,
-{
-    let regex_replacer = move |caps: &Captures| -> String {
-        // if caps[0].len() >= 5 {
-        //     return Err("word too long");
-        // }
-        let m = caps.get_match().as_str();
+impl Highlighter {
+    pub fn highlights_iter<'a: 'b, 'b>(&'a self, haystack: &'b str) -> impl Iterator<Item = (&'b str, SyntaxHighlightType, Range<usize>)> {
+        self.regex.captures_iter(haystack).map(|caps| {
+        let m = caps.get_match();
+        let str = caps.get_match().as_str();
         let highlight = if caps.get(1).is_some() {
             SyntaxHighlightType::Boolean
         } else if caps.get(2).is_some() {
@@ -45,12 +47,22 @@ where
         } else {
             SyntaxHighlightType::Other
         };
-        replacer(m, highlight)
-    };
-    SYNTAX_HIGHLIGHTER
-        .replace_all(str, regex_replacer)
-        .to_string()
+        (str, highlight, m.range())
+    })
+    }
 }
+// pub fn highlight_elements<F>(str: &str, replacer: F)
+// where
+//     F: Fn(&str, SyntaxHighlightType, Range<usize>),
+// {
+//     for caps in SYNTAX_HIGHLIGHTER.captures_iter(str) {
+//         replacer(str, highlight, m.range());
+//     }
+// }
+
+pub const DEFAULT_THEME: LazyCell<Theme> = LazyCell::new(|| {
+    basic_theme()
+});
 
 pub fn basic_theme() -> Theme {
     Theme {

@@ -34,7 +34,6 @@ pub struct Design {
     pub base10_decimal: Color,
 }
 
-// TODO: Could be non-owned strings
 #[derive(Debug)]
 pub struct Theme {
     pub name: String,

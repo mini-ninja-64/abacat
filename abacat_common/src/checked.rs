@@ -1,4 +1,3 @@
-// TODO: Maybe should return Option, makes harder to report exact error?
 pub trait CheckedEq<T> {
     fn checked_eq(&self, val: T) -> Option<bool>;
 }

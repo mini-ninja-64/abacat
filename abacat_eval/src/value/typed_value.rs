@@ -57,7 +57,6 @@ impl Number {
     }
 }
 
-// TODO: User function interning, instead of holding an actual expr
 #[derive(Debug, Clone)]
 pub enum Function {
     Native(NativeFunctionPointer),

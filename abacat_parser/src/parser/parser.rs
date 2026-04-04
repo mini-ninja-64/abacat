@@ -83,7 +83,7 @@ where
         Token::Base16Num(n) => Literal::Base16Num(n),
     };
 
-    // TODO: Fix binding power, its wrong ooops
+    // TODO: Fix binding power, i think some mistakes, will be uncovered by testing
     recursive(|expr| {
         let ident_expr = ident.map(|i| Expr::Ident(i)).labelled("Ident").as_context();
         let literal_expr = literal

@@ -5,6 +5,6 @@ fn main() {
     CxxQtBuilder::new_qml_module(module)
         .qt_module("Qml")
         .qrc("./qml/qml.qrc")
-        .files(["src/cxxqt_object.rs"])
+        .files(["src/cxxqt_object.rs", "src/syntax_highlighter.rs"])
         .build();
 }

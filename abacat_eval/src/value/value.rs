@@ -54,17 +54,32 @@ pub enum DisplayHint {
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match (&self.val, &self.display_hint) {
-            (TypedValue::Number(Number::Decimal(number)), _) => write!(f, "{}", number),
+            (TypedValue::Number(Number::Decimal(number)), DisplayHint::Base16)
+                if number.is_integer() && number.to_i128().is_some() =>
+            {
+                write!(f, "{:#X}", number.to_i128().unwrap())
+            }
             (TypedValue::Number(Number::Integer(number)), DisplayHint::Base16) => {
                 write!(f, "{:#X}", number)
             }
+            (TypedValue::Number(Number::Decimal(number)), DisplayHint::Base8)
+                if number.is_integer() && number.to_i128().is_some() =>
+            {
+                write!(f, "{:#X}", number.to_i128().unwrap())
+            }
             (TypedValue::Number(Number::Integer(number)), DisplayHint::Base8) => {
                 write!(f, "0{:#o}", number)
+            }
+            (TypedValue::Number(Number::Decimal(number)), DisplayHint::Base2)
+                if number.is_integer() && number.to_i128().is_some() =>
+            {
+                write!(f, "{:#X}", number.to_i128().unwrap())
             }
             (TypedValue::Number(Number::Integer(number)), DisplayHint::Base2) => {
                 write!(f, "{:#b}", number)
             }
             (TypedValue::Number(Number::Integer(number)), _) => write!(f, "{}", number),
+            (TypedValue::Number(Number::Decimal(number)), _) => write!(f, "{}", number),
             (TypedValue::Boolean(bool), _) => write!(f, "{}", bool),
             (TypedValue::Function(Function::Native(_)), _) => write!(f, "Native Function"),
             (

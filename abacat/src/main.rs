@@ -1,5 +1,10 @@
 mod cxxqt_object;
+mod settings;
+mod syntax_highlighter;
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
+
+// TODO: BUGS
+//   - Syntax parsing failures does not invalidate old eval
 
 fn main() {
     let mut app = QGuiApplication::new();
