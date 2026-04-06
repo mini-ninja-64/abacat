@@ -1,3 +1,4 @@
+use abacat_common::error::Span;
 use chumsky::{
     IterParser, Parser,
     error::Rich,
@@ -10,7 +11,7 @@ use chumsky::{
 };
 use rust_decimal::Decimal;
 
-use crate::{Span, Spanned, lexer::token::Token};
+use crate::{Spanned, lexer::token::Token};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
@@ -85,16 +86,19 @@ where
 
     // TODO: Fix binding power, i think some mistakes, will be uncovered by testing
     recursive(|expr| {
-        let ident_expr = ident.map(|i| Expr::Ident(i)).labelled("Ident").as_context();
+        let ident_expr = ident
+            .map(|i| Expr::Ident(i))
+            .labelled("identifier")
+            .as_context();
         let literal_expr = literal
             .map(|v| Expr::Literal(v))
-            .labelled("Literal")
+            .labelled("literal")
             .as_context();
         let parenthesised_expr = expr
             .clone()
             .delimited_by(just(Token::LeftParens), just(Token::RightParens))
             .map(|e| Expr::Parenthesised(Box::new(e)))
-            .labelled("Parenthesised")
+            .labelled("parenthesised expression")
             .as_context();
 
         let args_def = ident
@@ -113,7 +117,7 @@ where
                     .map_with(|(args, body), e| (Function::new(args, Box::new(body)), e.span())),
             )
             .map(|(name, func)| Expr::NamedFunction(name, func))
-            .labelled("Named function declaration")
+            .labelled("named function")
             .as_context();
 
         let anonymous_function = args_def
@@ -122,14 +126,15 @@ where
             .map_with(|(args, body), e| {
                 Expr::AnonymousFunction((Function::new(args, Box::new(body)), e.span()))
             })
-            .labelled("Anonymous function declaration")
+            .labelled("anonymous function")
             .as_context();
 
         let expr_args = expr
             .clone()
             .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
-            .delimited_by(just(Token::LeftParens), just(Token::RightParens));
+            .delimited_by(just(Token::LeftParens), just(Token::RightParens))
+            .labelled("parenthesised arguments list");
 
         choice((
             literal_expr,
@@ -212,11 +217,3 @@ where
         ))
     })
 }
-
-// pub fn expr<'tokens, 'src: 'tokens, I>() -> impl Parser<
-//     'tokens,
-//     I,
-//     Vec<Spanned<Expr<'src>>>,
-//     extra::Err<Rich<'tokens, Token<'src>, Span>>,
-// > {
-// }

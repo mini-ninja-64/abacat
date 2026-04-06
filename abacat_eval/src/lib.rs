@@ -12,7 +12,7 @@ mod tests {
     use rust_decimal::Decimal;
 
     use crate::{
-        document::Document,
+        document::{Document, ParserEvalPair},
         eval::Eval,
         value::{DisplayHint, Value},
     };
@@ -40,7 +40,7 @@ mod tests {
         use crate::document::Document;
 
         let mut doc = Document::new_with_default_constants();
-        let result = doc.next(parse(statement).map_err(|_| ())).unwrap();
+        let result = doc.next(parse(statement)).unwrap();
         assert!(result.checked_eq(&expected).unwrap());
     }
 
@@ -62,11 +62,11 @@ mod tests {
 
         let v = vec!["x = 123", "x = x + 456", "ans"];
         for expr in v {
-            doc.next(parse(expr).map_err(|_| ())).unwrap();
+            doc.next(parse(expr)).unwrap();
         }
-        doc.replace_at(0, parse("x = 1").map_err(|_| ()));
+        doc.replace_at(0, parse("x = 1"));
 
-        for (expr, eval) in doc.history() {
+        for ParserEvalPair(expr, eval) in doc.history() {
             let expr = expr.as_ref().unwrap();
             let e = eval.as_ref().unwrap();
             match e {
@@ -93,7 +93,7 @@ mod tests {
             "negate(true)",
         ];
         for expr in v {
-            let eval = doc.next(parse(expr).map_err(|_| ())).unwrap();
+            let eval = doc.next(parse(expr)).unwrap();
             match eval {
                 Eval::Value(value) => println!("'{}' = {:?}", expr, value),
                 _ => println!("'{}'", expr),
@@ -105,7 +105,7 @@ mod tests {
     fn assignments_mutate_state() {
         let mut doc = Document::new_with_default_constants();
 
-        let result = doc.next(parse("x = 0x05").map_err(|_| ())).unwrap();
+        let result = doc.next(parse("x = 0x05")).unwrap();
         assert!(
             result
                 .checked_eq(&Eval::ValueAssignment(
@@ -114,7 +114,7 @@ mod tests {
                 ))
                 .unwrap()
         );
-        let result = doc.next(parse("x + 6").map_err(|_| ())).unwrap();
+        let result = doc.next(parse("x + 6")).unwrap();
         assert!(
             result
                 .checked_eq(&Eval::Value(Value::integer(11, DisplayHint::Base16)))

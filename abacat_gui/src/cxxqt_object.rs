@@ -1,6 +1,6 @@
 use abacat_common::ui::{builtin::basic_theme, theme::Theme};
-use abacat_eval::{document::Document, eval::Eval};
-use abacat_parser::parse;
+use abacat_eval::document::{Document, ParserEvalPair};
+use abacat_parser::{ParserResult, ParsingError, parse};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QColor, QList, QModelIndex, QString, QVariant};
 use qobject::*;
@@ -138,21 +138,12 @@ pub struct MyObjectRust {
 
 impl Default for MyObjectRust {
     fn default() -> Self {
-        let mut doc = Document::new_with_default_constants();
-        let mut rows = vec![];
-        let content = "ans + 1";
-        let expr = parse(content).map_err(|_| ());
-        for i in 0..10000 {
-            doc = doc.with_expr(expr.clone());
-            rows.push(RowData::new(content.into()));
-        }
         Self {
             theme: basic_theme(),
             current_line: 0,
-            // list: vec![RowData::new("".into())],
-            // document: Document::new_with_default_constants().with_expr(Err(())),
-            list: rows,
-            document: doc,
+            list: vec![RowData::new("".into())],
+            document: Document::new_with_default_constants()
+                .with_expr(Err(ParsingError::Empty(0..0))),
         }
     }
 }
@@ -160,7 +151,7 @@ impl Default for MyObjectRust {
 impl qobject::MyObject {
     pub fn refresh_rows_cache(mut self: Pin<&mut Self>, from: usize) {
         for i in from..self.list.len() {
-            let (_, result) = &self.document.history_at(i).unwrap();
+            let ParserEvalPair(_, result) = &self.document.history_at(i).unwrap();
 
             let ans: Option<QString> = match result {
                 Ok(eval) => Some(format!("{}", eval.value()).into()),
@@ -217,7 +208,7 @@ impl qobject::MyObject {
             row_mut.data = new_data.clone();
         } else {
             let self_mut = &mut self.as_mut().rust_mut();
-            self_mut.document.replace_at(line, parsed.map_err(|_| ()));
+            self_mut.document.replace_at(line, parsed);
 
             let current = &mut self.as_mut().rust_mut();
             current.list[line] = RowData::new(new_data.clone());
@@ -248,7 +239,7 @@ impl qobject::MyObject {
         self.as_mut()
             .begin_insert_rows(&parent, row as i32, row as i32);
 
-        let parsed = parse(new_row.to_string().as_str()).map_err(|_| ());
+        let parsed = parse(new_row.to_string().as_str());
         let self_mut = &mut self.as_mut().rust_mut();
         self_mut.document.insert_at(row, parsed);
         self_mut.list.insert(row, RowData::new(new_row.clone()));

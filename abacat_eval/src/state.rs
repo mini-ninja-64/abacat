@@ -89,14 +89,6 @@ where
     IN: StateSource<I>,
     S: StateSource<I>,
 {
-    // pub fn with(mut self, overrides: O) -> StateSnapshot<'a, I, O, IN, S>{
-    //     StateSnapshot {
-    //         overrides: self.overrides,
-    //         initial: self.initial,
-    //         changesets: self.changesets,
-    //         phantom: self.phantom,
-    //     }
-    // }
     pub fn new(initial: &'a IN, sources: &'a [S]) -> StateSnapshot<'a, I, IN, S> {
         StateSnapshot {
             initial: initial,

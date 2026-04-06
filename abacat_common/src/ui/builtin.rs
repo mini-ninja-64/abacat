@@ -51,14 +51,6 @@ impl Highlighter {
     })
     }
 }
-// pub fn highlight_elements<F>(str: &str, replacer: F)
-// where
-//     F: Fn(&str, SyntaxHighlightType, Range<usize>),
-// {
-//     for caps in SYNTAX_HIGHLIGHTER.captures_iter(str) {
-//         replacer(str, highlight, m.range());
-//     }
-// }
 
 pub const DEFAULT_THEME: LazyCell<Theme> = LazyCell::new(|| {
     basic_theme()

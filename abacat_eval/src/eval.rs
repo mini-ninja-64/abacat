@@ -1,12 +1,10 @@
 use std::{collections::HashSet, ops::Deref};
 
-use abacat_common::mutability::MutabilityGuard;
-use abacat_parser::{
-    Spanned,
-    parser::parser::{BinaryOp, Expr, Function as FunctionExpr, Literal, UnaryOp},
-};
+use abacat_common::{error::Spanned, mutability::MutabilityGuard};
+use abacat_parser::parser::parser::{BinaryOp, Expr, Function as FunctionExpr, Literal, UnaryOp};
 
 use crate::{
+    document::ParserEvalPair,
     state::{NativeChangeset, StateMutation, StateSnapshot, VecChangeset},
     value::{DisplayHint, Function, Number, TypedValue, Value, function::Args},
 };
@@ -126,8 +124,7 @@ pub fn exec_func(
 }
 
 // TODO: Make eval funcs more generic
-pub type Snapshot<'a> =
-    StateSnapshot<'a, String, NativeChangeset, (Result<Spanned<Expr>, ()>, Result<Eval, ()>)>;
+pub type Snapshot<'a> = StateSnapshot<'a, String, NativeChangeset, ParserEvalPair>;
 
 pub fn eval_value<'a, 'b: 'c, 'c>(
     (expr, _): &'a Spanned<Expr>,
