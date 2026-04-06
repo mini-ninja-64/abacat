@@ -138,11 +138,21 @@ pub struct MyObjectRust {
 
 impl Default for MyObjectRust {
     fn default() -> Self {
+        let mut doc = Document::new_with_default_constants();
+        let mut rows = vec![];
+        let content = "ans + 1";
+        let expr = parse(content).map_err(|_| ());
+        for i in 0..10000 {
+            doc = doc.with_expr(expr.clone());
+            rows.push(RowData::new(content.into()));
+        }
         Self {
             theme: basic_theme(),
             current_line: 0,
-            list: vec![RowData::new("".into())],
-            document: Document::new_with_default_constants().with_expr(Err(())),
+            // list: vec![RowData::new("".into())],
+            // document: Document::new_with_default_constants().with_expr(Err(())),
+            list: rows,
+            document: doc,
         }
     }
 }

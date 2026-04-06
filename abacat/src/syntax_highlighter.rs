@@ -8,7 +8,7 @@ use cxx::UniquePtr;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QColor;
 
-use crate::{settings::SETTINGS, syntax_highlighter::ffi::AbacatSyntaxHighlighter};
+use crate::{settings::THEME, syntax_highlighter::ffi::AbacatSyntaxHighlighter};
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -151,33 +151,33 @@ impl ffi::AbacatSyntaxHighlighter {
     fn highlight_block(mut self: Pin<&mut AbacatSyntaxHighlighter>, text: &ffi::QString) {
         let string = text.to_string();
         // let y = x.background.blue;
-        let settings = SETTINGS.lock().unwrap();
+        let theme = THEME.read().unwrap();
 
         for (_, syntax_type, range) in HIGHLIGHTER.highlights_iter(string.as_str()) {
             match syntax_type {
                 SyntaxHighlightType::Boolean => {
-                    set_color_for_range!(self, range, &settings.theme.design.boolean);
+                    set_color_for_range!(self, range, &theme.design.boolean);
                 }
                 SyntaxHighlightType::Identifier => {
-                    set_color_for_range!(self, range, &settings.theme.design.identifier);
+                    set_color_for_range!(self, range, &theme.design.identifier);
                 }
                 SyntaxHighlightType::Base2 => {
-                    set_color_for_range!(self, range, &settings.theme.design.base2);
+                    set_color_for_range!(self, range, &theme.design.base2);
                 }
                 SyntaxHighlightType::Base8 => {
-                    set_color_for_range!(self, range, &settings.theme.design.base8);
+                    set_color_for_range!(self, range, &theme.design.base8);
                 }
                 SyntaxHighlightType::Base10 => {
-                    set_color_for_range!(self, range, &settings.theme.design.base10);
+                    set_color_for_range!(self, range, &theme.design.base10);
                 }
                 SyntaxHighlightType::Base10Decimal => {
-                    set_color_for_range!(self, range, &settings.theme.design.base10_decimal);
+                    set_color_for_range!(self, range, &theme.design.base10_decimal);
                 }
                 SyntaxHighlightType::Base16 => {
-                    set_color_for_range!(self, range, &settings.theme.design.base16);
+                    set_color_for_range!(self, range, &theme.design.base16);
                 }
                 SyntaxHighlightType::Other => {
-                    set_color_for_range!(self, range, &settings.theme.design.plain_text);
+                    set_color_for_range!(self, range, &theme.design.plain_text);
                 }
             }
         }

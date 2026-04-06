@@ -4,7 +4,7 @@ mod syntax_highlighter;
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 
 // TODO: BUGS
-//   - Syntax parsing failures does not invalidate old eval
+// - empty lines are thinner than lines with content by like 1 or 2 pixels :sob:
 
 fn main() {
     let mut app = QGuiApplication::new();

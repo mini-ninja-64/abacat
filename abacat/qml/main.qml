@@ -58,21 +58,25 @@ ApplicationWindow {
                     width: 50
                     color: myObject.plainTextColor()
                     font.family: "Monaco"
+
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignRight
-                    text: index
                     anchors.verticalCenter: parent.verticalCenter
 
-                    // anchors.horizontalCenter: parent.horizontalCenter
-                    // Layout.fillHeight: true
+                    text: index
+                }
+
+                QmlAbacatSyntaxHighlighter {
+                    input_document: textEditLine.textDocument
                 }
 
                 TextEdit {
                     id: textEditLine
                     property bool processing: false
 
-                    // width: 10
-                    // Layout.fillWidth: true
+                    verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: Text.AlignLeft
+                    anchors.verticalCenter: parent.verticalCenter
 
                     color: myObject.plainTextColor()
                     selectedTextColor: palette.highlightedText
@@ -143,9 +147,6 @@ ApplicationWindow {
                         }
                     }
                 }
-                QmlAbacatSyntaxHighlighter {
-                    input_document: textEditLine.textDocument
-                }
 
                 // TODO: MOVE TO DUNAMIC COMPONENT WIV LOADER
                 Text {
@@ -153,14 +154,20 @@ ApplicationWindow {
                     font.family: "Monaco"
                     leftPadding: 2
                     rightPadding: 2
+
                     verticalAlignment: Text.AlignVCenter
-                    horizontalAlignment: Text.AlignRight
+                    horizontalAlignment: Text.AlignLeft
+                    anchors.verticalCenter: parent.verticalCenter
+
                     color: myObject.plainTextColor()
                     // anchors.verticalCenter: parent.verticalCenter
 
                     text: answer === undefined ? "" : "="
+                    // height: 50
                 }
-
+                QmlAbacatSyntaxHighlighter {
+                    input_document: textEditAnswer.textDocument
+                }
                 TextEdit {
                     id: textEditAnswer
                     property bool processing: false
@@ -168,17 +175,17 @@ ApplicationWindow {
                     font.family: "Monaco"
                     leftPadding: 2
                     rightPadding: 2
+
                     verticalAlignment: Text.AlignVCenter
-                    horizontalAlignment: Text.AlignRight
+                    horizontalAlignment: Text.AlignLeft
+                    anchors.verticalCenter: parent.verticalCenter
+
                     color: myObject.plainTextColor()
                     // anchors.verticalCenter: parent.verticalCenter
 
                     text: answer === undefined ? "" : answer
                     readOnly: true
                     selectByMouse: true
-                }
-                QmlAbacatSyntaxHighlighter {
-                    input_document: textEditAnswer.textDocument
                 }
             }
         }
