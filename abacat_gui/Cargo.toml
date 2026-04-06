@@ -17,8 +17,8 @@ rand = "0.10.0"
 
 [build-dependencies]
 cxx-qt-build = { git = "https://github.com/KDAB/cxx-qt.git", features = [
-  "link_qt_object_files"
+  "link_qt_object_files",
 ] }
 qt-build-utils = { git = "https://github.com/KDAB/cxx-qt.git", features = [
-  "qt_minimal"
+  "qt_minimal",
 ] }

@@ -1,9 +1,15 @@
+use abacat_common::error::Spanned;
 use phf::phf_map;
 use rust_decimal::Decimal;
 
-use crate::value::{DisplayHint, Value, function::Args};
+use crate::{
+    error::EvalError,
+    value::{DisplayHint, Value, function::Args},
+};
 
-pub type NativeFunctionPointer = fn(args: &Vec<Value>) -> Result<Value, ()>;
+// TODO: Eventually move from giving span to an expr reference, to extract more info
+pub type NativeFunctionPointer =
+    fn(args: &Spanned<Vec<Spanned<Value>>>) -> Result<Value, EvalError>;
 
 pub enum NativeValue {
     Function(NativeFunctionPointer),
@@ -11,27 +17,26 @@ pub enum NativeValue {
 }
 
 pub const NATIVE_VALUES: phf::Map<&str, NativeValue> = phf_map! {
-    "testFuncTrue" => NativeValue::Function(|args| {
-        Args::exactly(0, args)?;
-        Ok(Value::boolean(true))
-    }),
-    "testFuncFalse" => NativeValue::Function(|_| Ok(Value::boolean(false))),
     // Representaion
     "bin" => NativeValue::Function(|args| {
         Args::exactly(1, args)?;
-        Ok(args[0].with_display_hint(DisplayHint::Base2))
+        let (args, _) = args;
+        Ok(args[0].0.with_display_hint(DisplayHint::Base2))
     }),
     "hex" => NativeValue::Function(|args| {
         Args::exactly(1, args)?;
-        Ok(args[0].with_display_hint(DisplayHint::Base16))
+        let (args, _) = args;
+        Ok(args[0].0.with_display_hint(DisplayHint::Base16))
     }),
     "dec" => NativeValue::Function(|args| {
         Args::exactly(1, args)?;
-        Ok(args[0].with_display_hint(DisplayHint::Base10))
+        let (args, _) = args;
+        Ok(args[0].0.with_display_hint(DisplayHint::Base10))
     }),
     "oct" => NativeValue::Function(|args| {
         Args::exactly(1, args)?;
-        Ok(args[0].with_display_hint(DisplayHint::Base8))
+        let (args, _) = args;
+        Ok(args[0].0.with_display_hint(DisplayHint::Base8))
     }),
     // Note: Should probs make a macro for this, prevents need for below unit test
     "PI" => NativeValue::Value(Value::decimal(Decimal::from_parts(1102470953, 185874565, 1703060790, false, 28))),
@@ -50,7 +55,7 @@ mod tests {
     impl NativeValue {
         pub fn as_decimal_unchecked(&self) -> Decimal {
             if let NativeValue::Value(val) = self {
-                val.as_number().unwrap().as_decimal().unwrap()
+                val.as_number().unwrap().as_decimal(0..0).unwrap()
             } else {
                 unreachable!("")
             }

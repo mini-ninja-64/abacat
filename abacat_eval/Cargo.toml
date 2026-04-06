@@ -9,3 +9,5 @@ abacat_parser = { version = "0.1.0", path = "../abacat_parser" }
 rstest = "0.26.1"
 rust_decimal = "1.40.0"
 phf = { version = "0.13.1", features = ["macros"] }
+snafu = "0.9.0"
+derive_more = { version = "2.1.1", features = ["display"] }

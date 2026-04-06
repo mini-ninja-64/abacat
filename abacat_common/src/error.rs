@@ -2,8 +2,9 @@ use std::ops::Range;
 
 use chumsky::span::SimpleSpan;
 
-pub type Span = SimpleSpan;
-pub type Spanned<T> = (T, Span);
+pub type SpanChumsky = SimpleSpan;
+pub type SpannedChumsky<T> = (T, SpanChumsky);
+pub type Spanned<T> = (T, Range<usize>);
 
 #[derive(Debug)]
 pub struct BasicFailure<M, C = ()> {
@@ -32,8 +33,8 @@ impl<M, C> BasicFailure<M, C> {
     }
 }
 
-pub trait LocatedFailure<M> {
-    fn span(&self) -> Range<usize>;
+pub trait LocatableFailure<M> {
+    fn span(&self) -> Option<Range<usize>>;
     fn message(&self) -> &M;
 }
 
@@ -41,9 +42,9 @@ pub trait WithCause<C> {
     fn cause(&self) -> &C;
 }
 
-impl<M, C> LocatedFailure<M> for BasicFailure<M, C> {
-    fn span(&self) -> Range<usize> {
-        self.span.clone()
+impl<M, C> LocatableFailure<M> for BasicFailure<M, C> {
+    fn span(&self) -> Option<Range<usize>> {
+        Some(self.span.clone())
     }
 
     fn message(&self) -> &M {

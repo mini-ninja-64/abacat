@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use abacat_common::error::{BasicFailure, LocatedFailure, Spanned};
+use abacat_common::error::{BasicFailure, LocatableFailure, SpannedChumsky};
 use chumsky::{Parser, input::Input, span::SimpleSpan};
 
 use crate::{lexer::token::Token, parser::parser::Expr};
@@ -17,7 +17,7 @@ pub enum ParsingError {
     Empty(Range<usize>),
 }
 
-pub type ParserResult = Result<Spanned<Expr>, ParsingError>;
+pub type ParserResult = Result<SpannedChumsky<Expr>, ParsingError>;
 
 pub fn parse<'a>(expr: &'a str) -> ParserResult {
     let lex_result: chumsky::ParseResult<
@@ -61,6 +61,12 @@ mod tests {
     #[test]
     fn it_doesnt_work() {
         let r = parse("12.34  =+a= d= =d daf").unwrap_err();
+        println!("{:?}", r);
+    }
+
+    #[test]
+    fn wierd() {
+        let r = parse("1 / true").unwrap();
         println!("{:?}", r);
     }
 

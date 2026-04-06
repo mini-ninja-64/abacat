@@ -1,4 +1,4 @@
-use abacat_common::error::{Span, Spanned};
+use abacat_common::error::{SpanChumsky, SpannedChumsky};
 use chumsky::{
     IterParser, Parser,
     error::Rich,
@@ -67,7 +67,7 @@ pub enum Token<'src> {
 }
 
 pub fn lexer<'src>()
--> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, extra::Err<Rich<'src, char, Span>>> {
+-> impl Parser<'src, &'src str, Vec<SpannedChumsky<Token<'src>>>, extra::Err<Rich<'src, char, SpanChumsky>>> {
     // TODO: improve this
     let base10_num = text::int(10)
         .then(just('.').ignore_then(text::digits(10).to_slice()).or_not())

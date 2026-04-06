@@ -2,9 +2,9 @@ use abacat_common::ui::{builtin::basic_theme, theme::Theme};
 use abacat_eval::document::{Document, ParserEvalPair};
 use abacat_parser::{ParserResult, ParsingError, parse};
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QColor, QList, QModelIndex, QString, QVariant};
+use cxx_qt_lib::{QColor, QList, QModelIndex, QPoint, QString, QVariant};
 use qobject::*;
-use std::pin::Pin;
+use std::{ops::Range, pin::Pin};
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -41,6 +41,7 @@ pub mod qobject {
     enum MyElementRole {
         Expression,
         Answer,
+        // ErrorHighlight,
     }
 
     // unsafe extern "RustQt" {}
@@ -122,10 +123,17 @@ pub mod qobject {
 pub struct RowData {
     data: QString,
     answer: Option<QString>,
+    // Abusing QPoint as a span
+    error_highlight: Option<Range<usize>>,
 }
+
 impl RowData {
     pub fn new(data: QString) -> RowData {
-        RowData { data, answer: None }
+        RowData {
+            data,
+            answer: None,
+            error_highlight: None,
+        }
     }
 }
 
@@ -151,11 +159,14 @@ impl Default for MyObjectRust {
 impl qobject::MyObject {
     pub fn refresh_rows_cache(mut self: Pin<&mut Self>, from: usize) {
         for i in from..self.list.len() {
-            let ParserEvalPair(_, result) = &self.document.history_at(i).unwrap();
+            let pair = &self.document.history_at(i).unwrap();
 
-            let ans: Option<QString> = match result {
-                Ok(eval) => Some(format!("{}", eval.value()).into()),
-                Err(_) => None,
+            let ans = match pair {
+                ParserEvalPair(Err(ParsingError::Empty(_)), _) => None,
+                // TODO: Extract proper info out of parsing error, make helper to get first error and span
+                ParserEvalPair(Err(_), _) => Some("Parsing error".into()),
+                ParserEvalPair(Ok(_), Err(eval_err)) => Some(format!("{}", eval_err).into()),
+                ParserEvalPair(Ok(_), Ok(eval)) => Some(format!("{}", eval.value()).into()),
             };
 
             self.as_mut().rust_mut().list[i].answer = ans;
@@ -173,6 +184,9 @@ impl qobject::MyObject {
             .and_then(|row| match element_role {
                 MyElementRole::Expression => Some(Into::<QVariant>::into(&row.data)),
                 MyElementRole::Answer => row.answer.as_ref().map(|ans| Into::<QVariant>::into(ans)),
+                // MyElementRole::ErrorHighlight => row
+                //     .error_highlight
+                //     .map(|range| QPoint::new(range.start as i32, range.end as i32).into()),
                 _ => unreachable!("This should never happen"),
             })
             .unwrap_or_default()
@@ -182,6 +196,7 @@ impl qobject::MyObject {
         let mut hash = QHash_i32_QByteArray::default();
         hash.insert(MyElementRole::Expression.repr, "expression".into());
         hash.insert(MyElementRole::Answer.repr, "answer".into());
+        // hash.insert(MyElementRole::ErrorHighlight.repr, "error_highlight".into());
         hash
     }
 

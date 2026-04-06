@@ -1,4 +1,5 @@
 pub mod document;
+pub mod error;
 pub mod eval;
 pub mod state;
 pub mod value;
@@ -20,28 +21,25 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    #[case("-1 + 1.5", Eval::Value(Value::decimal(Decimal::from_str("0.5").unwrap())))]
-    #[case("0.5 / 5", Eval::Value(Value::decimal(Decimal::from_str("0.1").unwrap())))]
-    #[case("0.5 // 5", Eval::Value(Value::integer(0, DisplayHint::Auto)))]
-    #[case("0xFF / 5.1", Eval::Value(Value::integer(50, DisplayHint::Base16)))]
-    #[case("!true", Eval::Value(Value::boolean(false)))]
-    #[case("true || false", Eval::Value(Value::boolean(true)))]
-    #[case("true && false", Eval::Value(Value::boolean(false)))]
-    #[case("true == false", Eval::Value(Value::boolean(false)))]
-    #[case("0.1 == 1", Eval::Value(Value::boolean(false)))]
-    #[case("1 == 1", Eval::Value(Value::boolean(true)))]
-    #[case("1 == 1.0000000000000", Eval::Value(Value::boolean(true)))]
-    #[case("PI", Eval::Value(Value::decimal(Decimal::from_str("3.1415926535897932384626433833").unwrap())))]
-    #[case(
-        "E == 2.7182818284590452353602874714",
-        Eval::Value(Value::boolean(true))
-    )]
-    fn statements_are_evaluated(#[case] statement: &str, #[case] expected: Eval) {
+    #[case("-1 + 1.5", Value::decimal(Decimal::from_str("0.5").unwrap()))]
+    #[case("0.5 / 5", Value::decimal(Decimal::from_str("0.1").unwrap()))]
+    #[case("0.5 // 5", Value::integer(0, DisplayHint::Auto))]
+    #[case("0xFF / 5.1", Value::integer(50, DisplayHint::Base16))]
+    #[case("!true", Value::boolean(false))]
+    #[case("true || false", Value::boolean(true))]
+    #[case("true && false", Value::boolean(false))]
+    #[case("true == false", Value::boolean(false))]
+    #[case("0.1 == 1", Value::boolean(false))]
+    #[case("1 == 1", Value::boolean(true))]
+    #[case("1 == 1.0000000000000", Value::boolean(true))]
+    #[case("PI", Value::decimal(Decimal::from_str("3.1415926535897932384626433833").unwrap()))]
+    #[case("E == 2.7182818284590452353602874714", Value::boolean(true))]
+    fn statements_are_evaluated(#[case] statement: &str, #[case] expected: Value) {
         use crate::document::Document;
 
         let mut doc = Document::new_with_default_constants();
         let result = doc.next(parse(statement)).unwrap();
-        assert!(result.checked_eq(&expected).unwrap());
+        assert!(result.value().checked_eq(&expected).unwrap());
     }
 
     #[rstest]
@@ -106,18 +104,18 @@ mod tests {
         let mut doc = Document::new_with_default_constants();
 
         let result = doc.next(parse("x = 0x05")).unwrap();
+
         assert!(
             result
-                .checked_eq(&Eval::ValueAssignment(
-                    "x".to_string(),
-                    Value::integer(5, DisplayHint::Base16)
-                ))
+                .value()
+                .checked_eq(&Value::integer(5, DisplayHint::Base16))
                 .unwrap()
         );
         let result = doc.next(parse("x + 6")).unwrap();
         assert!(
             result
-                .checked_eq(&Eval::Value(Value::integer(11, DisplayHint::Base16)))
+                .value()
+                .checked_eq(&Value::integer(11, DisplayHint::Base16))
                 .unwrap()
         );
     }
