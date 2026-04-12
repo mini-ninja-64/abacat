@@ -49,12 +49,12 @@ ApplicationWindow {
                 required property string expression
                 required property var answer
                 required property var model
+                required property bool renderAsError
+                required property var errorRange
 
                 spacing: 10
 
                 Text {
-                    leftPadding: 2
-                    rightPadding: 2
                     width: 50
                     color: myObject.plainTextColor()
                     font.family: "Monaco"
@@ -68,6 +68,7 @@ ApplicationWindow {
 
                 QmlAbacatSyntaxHighlighter {
                     input_document: textEditLine.textDocument
+                    error_range: errorRange
                 }
 
                 TextEdit {
@@ -152,8 +153,6 @@ ApplicationWindow {
                 Text {
                     opacity: myObject.answerOpacity()
                     font.family: "Monaco"
-                    leftPadding: 2
-                    rightPadding: 2
 
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignLeft
@@ -167,14 +166,13 @@ ApplicationWindow {
                 }
                 QmlAbacatSyntaxHighlighter {
                     input_document: textEditAnswer.textDocument
+                    render_as_error: renderAsError
                 }
                 TextEdit {
                     id: textEditAnswer
                     property bool processing: false
                     opacity: myObject.answerOpacity()
                     font.family: "Monaco"
-                    leftPadding: 2
-                    rightPadding: 2
 
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignLeft

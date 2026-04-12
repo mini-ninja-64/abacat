@@ -1,6 +1,7 @@
 mod cxxqt_object;
 mod settings;
 mod syntax_highlighter;
+mod util;
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 
 // TODO: BUGS / FEATURES
@@ -14,8 +15,11 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 // - Restore session on startup
 // - Should support setting cursor to end of line by clicking on far right when theres no answers configured
 // - Seperate colors for keyword vs idents
+// - typing in a cell when out of view does not work
 
 fn main() {
+    // Client::start();
+
     let mut app = QGuiApplication::new();
     let mut engine = QQmlApplicationEngine::new();
 

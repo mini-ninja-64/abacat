@@ -32,6 +32,8 @@ pub struct Design {
     pub base8: Color,
     pub base10: Color,
     pub base10_decimal: Color,
+    pub error_text: Color,
+    pub error_underline: Color,
 }
 
 #[derive(Debug)]
@@ -163,6 +165,11 @@ pub fn parse_yaml_doc(yaml: &Yaml) -> Result<Theme, ParseError<'static>> {
             base10_decimal: parse_color(
                 get_field_as_str(design, "base10_decimal")?,
                 "base10_decimal",
+            )?,
+            error_text: parse_color(get_field_as_str(design, "error_text")?, "error_text")?,
+            error_underline: parse_color(
+                get_field_as_str(design, "error_underline")?,
+                "error_underline",
             )?,
         },
     })

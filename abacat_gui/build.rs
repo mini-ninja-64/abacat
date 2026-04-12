@@ -1,4 +1,3 @@
-use autocxx_build;
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {

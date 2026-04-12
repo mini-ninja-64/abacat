@@ -72,6 +72,8 @@ pub fn basic_theme() -> Theme {
             base8: Color::new(255, 138, 255),
             base10: Color::new(255, 138, 255),
             base10_decimal: Color::new(255, 138, 255),
+            error_text: Color::new(255,0, 0),
+            error_underline: Color::new(255,0, 0),
         },
     }
 }

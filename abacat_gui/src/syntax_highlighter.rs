@@ -1,20 +1,55 @@
-use std::{ops::Range, pin::Pin};
+use std::{
+    mem::MaybeUninit,
+    ops::{Deref, Range},
+    pin::Pin,
+    ptr::null_mut,
+    sync::Arc,
+};
 
 use abacat_common::{
     error::Spanned,
+    types::PossiblyRef,
     ui::{
         builtin::{HIGHLIGHTER, SyntaxHighlightType, basic_theme},
         theme::{Color, Theme},
     },
 };
-use cxx::UniquePtr;
-use cxx_qt::CxxQtType;
-use cxx_qt_lib::QColor;
+use cxx::{ExternType, UniquePtr};
+use cxx_qt::{Constructor, CxxQtType};
+use cxx_qt_lib::{QColor, QObjectExt, QPoint, QVariant};
 
-use crate::{settings::THEME, syntax_highlighter::ffi::AbacatSyntaxHighlighter};
+use crate::{
+    settings::THEME,
+    syntax_highlighter::qobject::{AbacatSyntaxHighlighter, QmlAbacatSyntaxHighlighter},
+    util,
+};
+
+#[repr(C)]
+pub struct MyHighlighterRust;
+
+pub struct QSyntaxHighlighterUtilInternal;
+
+unsafe impl ExternType for QSyntaxHighlighterUtilInternal {
+    type Id = cxx::type_id!("QSyntaxHighlighterUtil");
+    type Kind = cxx::kind::Trivial;
+}
+
+// unsafe impl ExternType for AbacatSyntaxHighlighterRust {
+//     type Id = cxx::type_id!("AbacatSyntaxHighlighter");
+//     type Kind = cxx::kind::Trivial;
+// }
+
+// unsafe impl ExternType for crate::syntax_highlighter::qobject::AbacatSyntaxHighlighter {
+//     type Id = cxx::type_id!("AbacatSyntaxHighlighter");
+//     type Kind = cxx::kind::Trivial;
+// }
 
 #[cxx_qt::bridge]
-pub mod ffi {
+pub mod qobject {
+    // struct Simples {
+    //     x: AbacatSyntaxHighlighter,
+    // }
+    // unsafe impl ExternType for MyHighlighter {}
     #[repr(i32)]
     #[derive(Debug)]
     pub enum QTextCharFormatUnderlineStyle {
@@ -37,6 +72,12 @@ pub mod ffi {
 
         include!(< QFont >);
         type QFont = cxx_qt_lib::QFont;
+
+        include!(<QPoint>);
+        type QPoint = cxx_qt_lib::QPoint;
+
+        include!("cxx-qt-lib/qvariant.h");
+        type QVariant = cxx_qt_lib::QVariant;
 
         include!("helper.h");
         type QTextCharFormatUnderlineStyle;
@@ -67,6 +108,10 @@ pub mod ffi {
         unsafe fn make_unique(
             text_document: *mut QTextDocument,
         ) -> UniquePtr<AbacatSyntaxHighlighter>;
+
+        // include!("helper.h");
+        // fn m() -> Simples;
+        // unsafe fn m() -> AbacatSyntaxHighlighter;
     }
 
     unsafe extern "RustQt" {
@@ -89,6 +134,10 @@ pub mod ffi {
         );
 
         #[inherit]
+        #[cxx_name = "rehighlight"]
+        fn rehighlight(self: Pin<&mut AbacatSyntaxHighlighter>);
+
+        #[inherit]
         #[cxx_name = "setBackground"]
         fn set_background(
             self: Pin<&mut AbacatSyntaxHighlighter>,
@@ -107,19 +156,23 @@ pub mod ffi {
             underline: QTextCharFormatUnderlineStyle,
         );
 
+        #[qobject]
+        #[qml_element]
+        #[qproperty(QVariant, error_range, READ=get_error_range, WRITE=set_error_range)]
+        #[qproperty(bool, render_as_error, READ=get_render_as_error, WRITE=set_render_as_error)]
+        #[qproperty(*mut QQuickTextDocument, input_document, READ, WRITE=set_document)]
+        type QmlAbacatSyntaxHighlighter = super::QmlAbacatSyntaxHighlighterRust;
+
         fn set_document(
             self: Pin<&mut QmlAbacatSyntaxHighlighter>,
             document: *mut QQuickTextDocument,
         );
 
-        // fn get_error_highlight(self: &QmlAbacatSyntaxHighlighter) -> QVariant;
-        // fn set_error_highlight(self: Pin<&mut QmlAbacatSyntaxHighlighter>, highlight: QVariant);
+        fn set_error_range(self: Pin<&mut QmlAbacatSyntaxHighlighter>, range: &QVariant);
+        fn get_error_range(self: &QmlAbacatSyntaxHighlighter) -> QVariant;
 
-        #[qobject]
-        #[qml_element]
-        #[qproperty(*mut QQuickTextDocument, input_document, READ, NOTIFY, WRITE=set_document)]
-        // #[qproperty(QVariant, error_highlight, READ=get_error_highlight, WRITE=set_error_highlight)]
-        type QmlAbacatSyntaxHighlighter = super::QmlAbacatSyntaxHighlighterRust;
+        fn set_render_as_error(self: Pin<&mut QmlAbacatSyntaxHighlighter>, render_as_error: bool);
+        fn get_render_as_error(self: &QmlAbacatSyntaxHighlighter) -> bool;
     }
 
     impl
@@ -131,15 +184,31 @@ pub mod ffi {
         > for AbacatSyntaxHighlighter
     {
     }
-
     impl UniquePtr<QTextDocument> {}
     impl UniquePtr<AbacatSyntaxHighlighter> {}
 }
 
+#[derive(Debug)]
+pub struct AbacatSyntaxHighlighterRust {
+    // TODO: THEME
+    // error_range: Option<Range<usize>>,
+    // render_as_error: bool,
+}
+
+impl Default for AbacatSyntaxHighlighterRust {
+    fn default() -> Self {
+        Self {
+            // error_range: None,
+            // render_as_error: false,
+        }
+    }
+}
+
 pub struct QmlAbacatSyntaxHighlighterRust {
     highlighter: UniquePtr<AbacatSyntaxHighlighter>,
-    input_document: *mut ffi::QQuickTextDocument,
-    error_highlight: Option<Range<usize>>,
+    input_document: *mut qobject::QQuickTextDocument,
+    error_range: Option<Range<usize>>,
+    render_as_error: bool,
 }
 
 impl Default for QmlAbacatSyntaxHighlighterRust {
@@ -147,13 +216,77 @@ impl Default for QmlAbacatSyntaxHighlighterRust {
         Self {
             highlighter: UniquePtr::null(),
             input_document: Default::default(),
-            error_highlight: None,
+            error_range: None,
+            render_as_error: false,
         }
     }
 }
 
-impl ffi::QmlAbacatSyntaxHighlighter {
-    fn set_document(mut self: Pin<&mut Self>, document: *mut ffi::QQuickTextDocument) {
+macro_rules! set_color_for_range {
+    ($self: ident, $range: ident, $color_source: expr) => {{
+        let qcolor = util::to_qcolor($color_source);
+        $self
+            .as_mut()
+            .set_foreground($range.start as i32, $range.len() as i32, &qcolor);
+    }};
+}
+
+impl qobject::AbacatSyntaxHighlighter {
+    fn highlight_block(mut self: Pin<&mut Self>, text: &qobject::QString) {
+        // let string = text.to_string();
+        // let theme = THEME.read().unwrap();
+
+        // // Note: Must set plain text on everything, otherwise underlines are rendered as
+        // //       the fallback text colour
+        // let string_range = 0..string.len() as i32;
+        // if self.render_as_error {
+        //     set_color_for_range!(self, string_range, &theme.design.error_text);
+        // } else {
+        //     set_color_for_range!(self, string_range, &theme.design.plain_text);
+        //     for (_, syntax_type, range) in HIGHLIGHTER.highlights_iter(string.as_str()) {
+        //         match syntax_type {
+        //             SyntaxHighlightType::Boolean => {
+        //                 set_color_for_range!(self, range, &theme.design.boolean);
+        //             }
+        //             SyntaxHighlightType::Identifier => {
+        //                 set_color_for_range!(self, range, &theme.design.identifier);
+        //             }
+        //             SyntaxHighlightType::Base2 => {
+        //                 set_color_for_range!(self, range, &theme.design.base2);
+        //             }
+        //             SyntaxHighlightType::Base8 => {
+        //                 set_color_for_range!(self, range, &theme.design.base8);
+        //             }
+        //             SyntaxHighlightType::Base10 => {
+        //                 set_color_for_range!(self, range, &theme.design.base10);
+        //             }
+        //             SyntaxHighlightType::Base10Decimal => {
+        //                 set_color_for_range!(self, range, &theme.design.base10_decimal);
+        //             }
+        //             SyntaxHighlightType::Base16 => {
+        //                 set_color_for_range!(self, range, &theme.design.base16);
+        //             }
+        //             _ => {}
+        //         }
+        //     }
+        // }
+
+        // if let Some(range) = &self.error_range {
+        //     let color = util::to_qcolor(&theme.design.error_underline);
+        //     let start = range.start as i32;
+        //     let count = range.len() as i32;
+        //     self.as_mut().set_underline(
+        //         start,
+        //         count,
+        //         &color,
+        //         ffi::QTextCharFormatUnderlineStyle::SingleUnderline,
+        //     );
+        // }
+    }
+}
+
+impl qobject::QmlAbacatSyntaxHighlighter {
+    fn set_document(mut self: Pin<&mut Self>, document: *mut qobject::QQuickTextDocument) {
         self.as_mut().rust_mut().input_document = document;
 
         let text_document = unsafe {
@@ -161,110 +294,59 @@ impl ffi::QmlAbacatSyntaxHighlighter {
             input.text_document()
         };
 
-        self.as_mut().rust_mut().highlighter =
-            unsafe { ffi::make_abacat_syntax_highlighter(text_document) };
+        let x = qobject::AbacatSyntaxHighlighter::new(());
 
-        self.as_mut().input_document_changed();
-    }
-}
-
-macro_rules! set_color_for_range {
-    ($self: ident, $range: ident, $color_source: expr) => {{
-        let color = $color_source;
-        let qcolor = QColor::from_rgb(color.red as i32, color.green as i32, color.blue as i32);
-        $self
-            .as_mut()
-            .set_foreground($range.start as i32, $range.len() as i32, &qcolor);
-    }};
-}
-
-impl ffi::AbacatSyntaxHighlighter {
-    fn highlight_block(mut self: Pin<&mut AbacatSyntaxHighlighter>, text: &ffi::QString) {
-        // let mut char_format = ffi::make_text_char_format();
-        let string = text.to_string();
-        // let y = x.background.blue;
-        let theme = THEME.read().unwrap();
-
-        // Note: Must set plain text on everything, otherwise underlines are rendered as
-        //       the fallback text colour
-        let string_range = 0..string.len() as i32;
-        set_color_for_range!(self, string_range, &theme.design.plain_text);
-
-        for (_, syntax_type, range) in HIGHLIGHTER.highlights_iter(string.as_str()) {
-            match syntax_type {
-                SyntaxHighlightType::Boolean => {
-                    set_color_for_range!(self, range, &theme.design.boolean);
-                }
-                SyntaxHighlightType::Identifier => {
-                    set_color_for_range!(self, range, &theme.design.identifier);
-                }
-                SyntaxHighlightType::Base2 => {
-                    set_color_for_range!(self, range, &theme.design.base2);
-                }
-                SyntaxHighlightType::Base8 => {
-                    set_color_for_range!(self, range, &theme.design.base8);
-                }
-                SyntaxHighlightType::Base10 => {
-                    set_color_for_range!(self, range, &theme.design.base10);
-                }
-                SyntaxHighlightType::Base10Decimal => {
-                    set_color_for_range!(self, range, &theme.design.base10_decimal);
-                }
-                SyntaxHighlightType::Base16 => {
-                    set_color_for_range!(self, range, &theme.design.base16);
-                }
-                _ => {}
-            }
-        }
-
-        // let red = QColor::from_rgb(255, 0, 0);
-        // self.as_mut().set_foreground(
-        //     0,
-        //     text.len() as i32,
-        //     &red,
-        //     // ffi::QTextCharFormatUnderlineStyle::WaveUnderline,
-        // );
-        let red = QColor::from_rgb(255, 0, 0);
-        self.set_underline(
-            0,
-            10,
-            &red,
-            ffi::QTextCharFormatUnderlineStyle::WaveUnderline,
-        );
-        // format(int) -> QTextCharFormat
-        // Need to calculate overlaps
-        // textCharFormat.merge(textCharformat)
-
-        // for (style, span) in self.styles {
-        //     let format = ffi::QTextCharFormat.new();
-        //     self.set_char_format(span.start as i32, span.len() as i32, format);
+        // let mut highlighter = unsafe { ffi::make_abacat_syntax_highlighter(text_document) };
+        // if let Some(mut highlighter) = highlighter.as_mut() {
+        //     highlighter.as_mut().rust_mut().render_as_error = self.render_as_error;
+        //     highlighter.as_mut().rust_mut().error_range = self.error_range.clone();
+        //     highlighter.rehighlight();
         // }
+        // self.as_mut().rust_mut().highlighter = highlighter;
+    }
+
+    fn set_error_range(mut self: Pin<&mut Self>, range: &qobject::QVariant) {
+        let range = range.value::<QPoint>().map(|range| {
+            let start = range.x() as usize;
+            let end = range.y() as usize;
+            start..end
+        });
+        self.as_mut().rust_mut().error_range = range.clone();
+        if let Some(mut highlighter) = self.as_mut().rust_mut().highlighter.as_mut() {
+            // highlighter.as_mut().rust_mut().error_range = range;
+            highlighter.rehighlight();
+        }
+    }
+    fn get_error_range(self: &Self) -> QVariant {
+        self.error_range
+            .as_ref()
+            .map(|Range { start, end }| QPoint::new(*start as i32, *end as i32))
+            .map(|p| Into::<QVariant>::into(&p))
+            .unwrap_or_default()
+    }
+
+    fn set_render_as_error(mut self: Pin<&mut Self>, render_as_error: bool) {
+        self.as_mut().rust_mut().render_as_error = render_as_error;
+        if let Some(mut highlighter) = self.as_mut().rust_mut().highlighter.as_mut() {
+            // highlighter.as_mut().rust_mut().render_as_error = render_as_error;
+            highlighter.rehighlight();
+        }
+    }
+
+    fn get_render_as_error(self: &Self) -> bool {
+        self.render_as_error
     }
 }
 
-pub struct OverlayStyle {
-    highlight: Color,
-}
-
-pub struct AbacatSyntaxHighlighterRust {
-    styles: Vec<Spanned<OverlayStyle>>,
-}
-
-impl<'a> Default for AbacatSyntaxHighlighterRust {
-    fn default() -> Self {
-        Self { styles: vec![] }
-    }
-}
-
-impl cxx_qt::Constructor<(*mut ffi::QTextDocument,)> for ffi::AbacatSyntaxHighlighter {
+impl cxx_qt::Constructor<(*mut qobject::QTextDocument,)> for qobject::AbacatSyntaxHighlighter {
     type NewArguments = ();
 
-    type BaseArguments = (*mut ffi::QTextDocument,);
+    type BaseArguments = (*mut qobject::QTextDocument,);
 
     type InitializeArguments = ();
 
     fn route_arguments(
-        args: (*mut ffi::QTextDocument,),
+        args: (*mut qobject::QTextDocument,),
     ) -> (
         Self::NewArguments,
         Self::BaseArguments,

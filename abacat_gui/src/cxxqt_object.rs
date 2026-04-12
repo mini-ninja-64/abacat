@@ -41,7 +41,8 @@ pub mod qobject {
     enum MyElementRole {
         Expression,
         Answer,
-        // ErrorHighlight,
+        ErrorRange,
+        RenderAsError,
     }
 
     // unsafe extern "RustQt" {}
@@ -120,11 +121,24 @@ pub mod qobject {
 }
 
 #[derive(Debug)]
+pub enum ErrorHighlight {
+    UnknownLocation,
+    Location(Range<usize>),
+}
+
+impl Into<ErrorHighlight> for Option<Range<usize>> {
+    fn into(self) -> ErrorHighlight {
+        self.map(|r| ErrorHighlight::Location(r))
+            .unwrap_or(ErrorHighlight::UnknownLocation)
+    }
+}
+
+#[derive(Debug)]
 pub struct RowData {
     data: QString,
     answer: Option<QString>,
     // Abusing QPoint as a span
-    error_highlight: Option<Range<usize>>,
+    error_range: Option<ErrorHighlight>,
 }
 
 impl RowData {
@@ -132,7 +146,7 @@ impl RowData {
         RowData {
             data,
             answer: None,
-            error_highlight: None,
+            error_range: None,
         }
     }
 }
@@ -146,12 +160,18 @@ pub struct MyObjectRust {
 
 impl Default for MyObjectRust {
     fn default() -> Self {
+        let mut doc = Document::new_with_default_constants();
+        let mut row_data = vec![];
+        for i in 0..1000 {
+            let s = format!("{} + ans", i);
+            doc = doc.with_expr(parse(s.as_str()));
+            row_data.push(RowData::new(s.into()));
+        }
         Self {
             theme: basic_theme(),
             current_line: 0,
-            list: vec![RowData::new("".into())],
-            document: Document::new_with_default_constants()
-                .with_expr(Err(ParsingError::Empty(0..0))),
+            list: row_data,
+            document: doc,
         }
     }
 }
@@ -161,15 +181,23 @@ impl qobject::MyObject {
         for i in from..self.list.len() {
             let pair = &self.document.history_at(i).unwrap();
 
-            let ans = match pair {
-                ParserEvalPair(Err(ParsingError::Empty(_)), _) => None,
+            let (answer, error) = match pair {
+                ParserEvalPair(Err(ParsingError::Empty(_)), _) => (None, None),
                 // TODO: Extract proper info out of parsing error, make helper to get first error and span
-                ParserEvalPair(Err(_), _) => Some("Parsing error".into()),
-                ParserEvalPair(Ok(_), Err(eval_err)) => Some(format!("{}", eval_err).into()),
-                ParserEvalPair(Ok(_), Ok(eval)) => Some(format!("{}", eval.value()).into()),
+                ParserEvalPair(Err(x), _) => (
+                    Some("Parsing error".into()),
+                    Some(ErrorHighlight::UnknownLocation),
+                ),
+                ParserEvalPair(Ok(_), Err(eval_err)) => (
+                    Some(format!("{}", eval_err).into()),
+                    Some(eval_err.span().into()),
+                ),
+                ParserEvalPair(Ok(_), Ok(eval)) => (Some(format!("{}", eval.value()).into()), None),
             };
 
-            self.as_mut().rust_mut().list[i].answer = ans;
+            let row = &mut self.as_mut().rust_mut().list[i];
+            row.answer = answer;
+            row.error_range = error;
         }
     }
 
@@ -184,9 +212,18 @@ impl qobject::MyObject {
             .and_then(|row| match element_role {
                 MyElementRole::Expression => Some(Into::<QVariant>::into(&row.data)),
                 MyElementRole::Answer => row.answer.as_ref().map(|ans| Into::<QVariant>::into(ans)),
-                // MyElementRole::ErrorHighlight => row
-                //     .error_highlight
-                //     .map(|range| QPoint::new(range.start as i32, range.end as i32).into()),
+                MyElementRole::ErrorRange => {
+                    row.error_range.as_ref().map(|highglight| match highglight {
+                        ErrorHighlight::Location(range) => Into::<QVariant>::into(&QPoint::new(
+                            range.start as i32,
+                            range.end as i32,
+                        )),
+                        ErrorHighlight::UnknownLocation => QVariant::default(),
+                    })
+                }
+                MyElementRole::RenderAsError => {
+                    Some(Into::<QVariant>::into(&row.error_range.is_some()))
+                }
                 _ => unreachable!("This should never happen"),
             })
             .unwrap_or_default()
@@ -196,7 +233,8 @@ impl qobject::MyObject {
         let mut hash = QHash_i32_QByteArray::default();
         hash.insert(MyElementRole::Expression.repr, "expression".into());
         hash.insert(MyElementRole::Answer.repr, "answer".into());
-        // hash.insert(MyElementRole::ErrorHighlight.repr, "error_highlight".into());
+        hash.insert(MyElementRole::ErrorRange.repr, "errorRange".into());
+        hash.insert(MyElementRole::RenderAsError.repr, "renderAsError".into());
         hash
     }
 
@@ -206,7 +244,6 @@ impl qobject::MyObject {
         new_data: &QString,
         parent: &QModelIndex,
     ) {
-        // println!("row: {}, new_data: {}", line, new_data);
         let current_row = &self.list[line];
         if current_row.data == *new_data {
             return;
@@ -231,7 +268,12 @@ impl qobject::MyObject {
         self.as_mut().refresh_rows_cache(line);
 
         // TODO: Move to common ref
-        let roles: QList<i32> = vec![MyElementRole::Answer.repr].into();
+        let roles: QList<i32> = vec![
+            MyElementRole::Answer.repr,
+            MyElementRole::ErrorRange.repr,
+            MyElementRole::RenderAsError.repr,
+        ]
+        .into();
         let bottom_right = parent.sibling_at_row((length - 1) as i32);
         self.as_mut().data_changed(&parent, &bottom_right, &roles);
     }
