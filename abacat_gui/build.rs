@@ -6,7 +6,15 @@ fn main() {
         .qt_module("Qml")
         .qt_module("Gui")
         .qrc("./qml/qml.qrc")
-        .files(["src/cxxqt_object.rs", "src/syntax_highlighter.rs"])
-        .cpp_file("./include/helper.h")
+        .files([
+            "src/cxxqt_object.rs",
+            "src/syntax_highlighter.rs",
+            "src/experiment.rs",
+        ])
+        .cpp_files([
+            "./include/experiment.hpp",
+            "./include/helper.h",
+            "./include/experiment.cpp",
+        ])
         .build();
 }

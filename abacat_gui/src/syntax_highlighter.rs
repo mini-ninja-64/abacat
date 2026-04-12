@@ -23,17 +23,6 @@ use crate::{
     syntax_highlighter::qobject::{AbacatSyntaxHighlighter, QmlAbacatSyntaxHighlighter},
     util,
 };
-
-#[repr(C)]
-pub struct MyHighlighterRust;
-
-pub struct QSyntaxHighlighterUtilInternal;
-
-unsafe impl ExternType for QSyntaxHighlighterUtilInternal {
-    type Id = cxx::type_id!("QSyntaxHighlighterUtil");
-    type Kind = cxx::kind::Trivial;
-}
-
 // unsafe impl ExternType for AbacatSyntaxHighlighterRust {
 //     type Id = cxx::type_id!("AbacatSyntaxHighlighter");
 //     type Kind = cxx::kind::Trivial;
@@ -112,6 +101,7 @@ pub mod qobject {
         // include!("helper.h");
         // fn m() -> Simples;
         // unsafe fn m() -> AbacatSyntaxHighlighter;
+
     }
 
     unsafe extern "RustQt" {

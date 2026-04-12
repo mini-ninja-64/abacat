@@ -1,8 +1,13 @@
 mod cxxqt_object;
+mod experiment;
 mod settings;
 mod syntax_highlighter;
 mod util;
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
+
+// use crate::syntax_highlighter::qobject::test_func;
+//
+use crate::experiment::ffi::{create_basic_sub, print_basic_sub, test_func};
 
 // TODO: BUGS / FEATURES
 // - empty lines are thinner than lines with content by like 1 or 2 pixels :sob:
@@ -19,6 +24,10 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 
 fn main() {
     // Client::start();
+    test_func();
+
+    let sub = create_basic_sub(123);
+    print_basic_sub(&sub);
 
     let mut app = QGuiApplication::new();
     let mut engine = QQmlApplicationEngine::new();
