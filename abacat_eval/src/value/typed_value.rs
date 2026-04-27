@@ -54,14 +54,14 @@ impl Number {
             Number::Decimal(decimal) => decimal.is_integer(),
         }
     }
-    pub fn as_integer(&self, span: Range<usize>) -> Result<i128, EvalError> {
+    pub fn as_integer(&self, span: &Option<Range<usize>>) -> Result<i128, EvalError> {
         match self {
             Number::Integer(int) => Ok(*int),
             Number::Decimal(decimal) => {
                 decimal
                     .to_i128()
                     .ok_or_else(|| EvalError::NumberConversionFailure {
-                        span: span,
+                        span: span.clone(),
                         from: NumberType::Decimal,
                         to: NumberType::Integer,
                     })
@@ -74,11 +74,11 @@ impl Number {
             Number::Decimal(decimal) => !decimal.is_integer(),
         }
     }
-    pub fn as_decimal(&self, span: Range<usize>) -> Result<Decimal, EvalError> {
+    pub fn as_decimal(&self, span: &Option<Range<usize>>) -> Result<Decimal, EvalError> {
         match self {
             Number::Integer(int) => {
                 Decimal::from_i128(*int).ok_or_else(|| EvalError::NumberConversionFailure {
-                    span: span,
+                    span: span.clone(),
                     from: NumberType::Integer,
                     to: NumberType::Decimal,
                 })

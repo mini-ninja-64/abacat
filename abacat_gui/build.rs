@@ -7,14 +7,14 @@ fn main() {
         .qt_module("Gui")
         .qrc("./qml/qml.qrc")
         .files([
-            "src/cxxqt_object.rs",
+            "src/abacat_document.rs",
             "src/syntax_highlighter.rs",
-            "src/experiment.rs",
+            "src/qtextcharformat.rs",
         ])
         .cpp_files([
-            "./include/experiment.hpp",
-            "./include/helper.h",
-            "./include/experiment.cpp",
+            "./include/qtextcharformat.hpp",
+            "./include/syntax_highlighter.hpp",
+            "./include/utils.hpp",
         ])
         .build();
 }

@@ -1,6 +1,6 @@
 use std::{cell::LazyCell, ops::Range};
 
-use regex::{Captures, Regex};
+use regex::Regex;
 
 use crate::ui::theme::{Color, Design, Theme};
 

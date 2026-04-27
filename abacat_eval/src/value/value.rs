@@ -1,9 +1,6 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops::Range};
 
-use abacat_common::{
-    checked::{CheckedAnd, CheckedEq, CheckedOr},
-    error::BasicFailure,
-};
+use abacat_common::checked::{CheckedAnd, CheckedEq, CheckedOr};
 use abacat_parser::parser::parser::{BinaryOp, UnaryOp};
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 
@@ -21,25 +18,27 @@ macro_rules! binary_maths {
         let right_num = $right.as_number()?;
 
         if left_num.is_integer() && right_num.is_integer() {
-            let left_num = left_num.as_integer(0..0)?;
-            let right_num = right_num.as_integer(0..0)?;
+            let left_num = left_num.as_integer(&$self.span)?;
+            let right_num = right_num.as_integer(&$right.span)?;
 
             Ok(Value {
+                span: None,
                 val: TypedValue::Number(Number::Integer(left_num.$maths_func(right_num).ok_or(
                     EvalError::BinaryOperationFailure {
-                        span: 0..0,
+                        span: combined_span($self, $right),
                         op: $op,
                     },
                 )?)),
                 display_hint: $self.display_hint,
             })
         } else {
-            let left_num = left_num.as_decimal(0..0)?;
-            let right_num = right_num.as_decimal(0..0)?;
+            let left_num = left_num.as_decimal(&$self.span)?;
+            let right_num = right_num.as_decimal(&$right.span)?;
             Ok(Value {
+                span: None,
                 val: TypedValue::Number(Number::Decimal(left_num.$maths_func(right_num).ok_or(
                     EvalError::BinaryOperationFailure {
-                        span: 0..0,
+                        span: combined_span($self, $right),
                         op: $op,
                     },
                 )?)),
@@ -51,6 +50,7 @@ macro_rules! binary_maths {
 
 #[derive(Debug, Clone)]
 pub struct Value {
+    pub span: Option<Range<usize>>,
     pub val: TypedValue,
     pub display_hint: DisplayHint,
 }
@@ -106,6 +106,15 @@ impl Display for Value {
     }
 }
 
+pub fn combined_span(left: &Value, right: &Value) -> Option<Range<usize>> {
+    left.span.as_ref().and_then(|left_span| {
+        right
+            .span
+            .as_ref()
+            .map(|right_span| left_span.start..right_span.end)
+    })
+}
+
 impl CheckedEq<&Value> for Value {
     fn checked_eq(&self, right: &Value) -> Option<bool> {
         let hint_equal = self.display_hint == right.display_hint;
@@ -116,22 +125,31 @@ impl CheckedEq<&Value> for Value {
 
 impl Value {
     pub fn with_display_hint(&self, display_hint: DisplayHint) -> Value {
-        Value::new(self.val.clone(), display_hint)
+        Value::new(None, self.val.clone(), display_hint)
     }
     pub const fn decimal(val: Decimal) -> Value {
-        Value::new(TypedValue::Number(Number::Decimal(val)), DisplayHint::Auto)
+        Value::new(
+            None,
+            TypedValue::Number(Number::Decimal(val)),
+            DisplayHint::Auto,
+        )
     }
     pub const fn function(val: Function) -> Value {
-        Value::new(TypedValue::Function(val), DisplayHint::Auto)
+        Value::new(None, TypedValue::Function(val), DisplayHint::Auto)
     }
     pub const fn boolean(val: bool) -> Value {
-        Value::new(TypedValue::Boolean(val), DisplayHint::Auto)
+        Value::new(None, TypedValue::Boolean(val), DisplayHint::Auto)
     }
     pub const fn integer(val: i128, display_hint: DisplayHint) -> Value {
-        Value::new(TypedValue::Number(Number::Integer(val)), display_hint)
+        Value::new(None, TypedValue::Number(Number::Integer(val)), display_hint)
     }
-    pub const fn new(val: TypedValue, display_hint: DisplayHint) -> Value {
+    pub const fn new(
+        span: Option<Range<usize>>,
+        val: TypedValue,
+        display_hint: DisplayHint,
+    ) -> Value {
         return Value {
+            span: span,
             val: val,
             display_hint: display_hint,
         };
@@ -141,7 +159,7 @@ impl Value {
         match &self.val {
             TypedValue::Number(num) => Ok(num),
             _ => Err(EvalError::UnableToConvert {
-                span: 0..0,
+                span: self.span.clone(),
                 from: self.val.actual_type(),
                 to: ActualType::Number,
             }),
@@ -152,7 +170,7 @@ impl Value {
         match &self.val {
             TypedValue::Function(function) => Ok(function),
             _ => Err(EvalError::UnableToConvert {
-                span: 0..0,
+                span: self.span.clone(),
                 from: self.val.actual_type(),
                 to: ActualType::Function,
             }),
@@ -172,29 +190,37 @@ impl Value {
         let left_num = self.as_number()?;
         let right_num = right.as_number()?;
 
+        if let Ok(right_num) = right_num.as_integer(&right.span)
+            && right_num == 0
+        {
+            return Err(EvalError::DivideByZero {
+                span: combined_span(self, right),
+            });
+        }
+
         if left_num.is_integer()
             && right_num.is_integer()
-            && (left_num.as_integer(0..0)? % right_num.as_integer(0..0)? == 0)
+            && (left_num.as_integer(&self.span)? % right_num.as_integer(&right.span)? == 0)
         {
-            let left_num = left_num.as_integer(0..0)?;
-            let right_num = right_num.as_integer(0..0)?;
+            let left_num = left_num.as_integer(&self.span)?;
+            let right_num = right_num.as_integer(&right.span)?;
             Ok(Value::integer(
                 left_num
                     .checked_div(right_num)
                     .ok_or(EvalError::BinaryOperationFailure {
-                        span: 0..0,
+                        span: combined_span(self, right),
                         op: BinaryOp::Divide,
                     })?,
                 self.display_hint,
             ))
         } else {
-            let left_num = left_num.as_decimal(0..0)?;
-            let right_num = right_num.as_decimal(0..0)?;
+            let left_num = left_num.as_decimal(&self.span)?;
+            let right_num = right_num.as_decimal(&right.span)?;
             let result =
                 left_num
                     .checked_div(right_num)
                     .ok_or(EvalError::BinaryOperationFailure {
-                        span: 0..0,
+                        span: combined_span(self, right),
                         op: BinaryOp::Divide,
                     })?;
             if result.is_integer()
@@ -211,7 +237,7 @@ impl Value {
     pub fn try_equal(&self, right: &Value) -> Result<Value, EvalError> {
         self.val.checked_eq(&right.val).map(Value::boolean).ok_or(
             EvalError::BinaryOperationFailure {
-                span: 0..0,
+                span: combined_span(self, right),
                 op: BinaryOp::EqualEqual,
             },
         )
@@ -220,7 +246,7 @@ impl Value {
     pub fn try_and(&self, right: &Value) -> Result<Value, EvalError> {
         self.val.checked_and(&right.val).map(Value::boolean).ok_or(
             EvalError::BinaryOperationFailure {
-                span: 0..0,
+                span: combined_span(self, right),
                 op: BinaryOp::EqualEqual,
             },
         )
@@ -228,7 +254,7 @@ impl Value {
     pub fn try_or(&self, right: &Value) -> Result<Value, EvalError> {
         self.val.checked_or(&right.val).map(Value::boolean).ok_or(
             EvalError::BinaryOperationFailure {
-                span: 0..0,
+                span: combined_span(self, right),
                 op: BinaryOp::OrOr,
             },
         )
@@ -237,31 +263,39 @@ impl Value {
     pub fn try_int_div(&self, right: &Value) -> Result<Value, EvalError> {
         let left_num = self.as_number()?;
         let right_num = right.as_number()?;
+
+        if let Ok(right_num) = right_num.as_integer(&right.span)
+            && right_num == 0
+        {
+            return Err(EvalError::DivideByZero {
+                span: combined_span(self, right),
+            });
+        }
         if left_num.is_integer() && right_num.is_integer() {
-            let left_num = left_num.as_integer(0..0)?;
-            let right_num = right_num.as_integer(0..0)?;
+            let left_num = left_num.as_integer(&self.span)?;
+            let right_num = right_num.as_integer(&right.span)?;
             Ok(Value::integer(
                 left_num
                     .checked_div(right_num)
                     .ok_or(EvalError::BinaryOperationFailure {
-                        span: 0..0,
+                        span: combined_span(self, right),
                         op: BinaryOp::Divide,
                     })?,
                 self.display_hint,
             ))
         } else {
-            let left_num = left_num.as_decimal(0..0)?;
-            let right_num = right_num.as_decimal(0..0)?;
+            let left_num = left_num.as_decimal(&self.span)?;
+            let right_num = right_num.as_decimal(&right.span)?;
             let result = left_num
                 .checked_div(right_num)
                 .ok_or(EvalError::BinaryOperationFailure {
-                    span: 0..0,
+                    span: combined_span(self, right),
                     op: BinaryOp::Divide,
                 })?
                 .trunc()
                 .to_i128()
                 .ok_or(EvalError::NumberConversionFailure {
-                    span: 0..0,
+                    span: combined_span(self, right),
                     from: NumberType::Decimal,
                     to: NumberType::Integer,
                 })?;
@@ -273,7 +307,7 @@ impl Value {
         match &self.val {
             TypedValue::Boolean(bool) => Ok(Value::boolean(!*bool)),
             _ => Err(EvalError::UnaryOperationFailure {
-                span: 0..0,
+                span: self.span.clone(),
                 op: UnaryOp::ExclamationMark,
             }),
         }
@@ -282,16 +316,18 @@ impl Value {
         match &self.val {
             TypedValue::Number(number) => match number {
                 Number::Integer(int) => Ok(Value::new(
+                    None,
                     TypedValue::Number(Number::Integer(-int)),
                     self.display_hint,
                 )),
                 Number::Decimal(decimal) => Ok(Value::new(
+                    None,
                     TypedValue::Number(Number::Decimal(-decimal)),
                     self.display_hint,
                 )),
             },
             _ => Err(EvalError::UnaryOperationFailure {
-                span: 0..0,
+                span: self.span.clone(),
                 op: UnaryOp::Minus,
             }),
         }

@@ -64,7 +64,7 @@ impl Document {
                 .map_or(true, |state| state.is_mutable());
             if !mutable {
                 return Err(EvalError::ImmutableAssignment {
-                    span: ident_span.clone(),
+                    span: Some(ident_span.clone()),
                 });
             }
             changeset.push(StateMutation::new(

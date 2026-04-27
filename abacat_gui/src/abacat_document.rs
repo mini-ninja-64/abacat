@@ -1,10 +1,14 @@
-use abacat_common::ui::{builtin::basic_theme, theme::Theme};
+use abacat_common::{
+    error::LocatableFailure,
+    ui::{builtin::basic_theme, theme::Theme},
+};
 use abacat_eval::document::{Document, ParserEvalPair};
-use abacat_parser::{ParserResult, ParsingError, parse};
+use abacat_parser::{ParsingError, parse};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QColor, QList, QModelIndex, QPoint, QString, QVariant};
-use qobject::*;
 use std::{ops::Range, pin::Pin};
+
+use crate::abacat_document::qobject::AbacatDocumentRole;
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -37,8 +41,8 @@ pub mod qobject {
         type QColor = cxx_qt_lib::QColor;
     }
 
-    #[qenum(MyObject)]
-    enum MyElementRole {
+    #[qenum(AbacatDocument)]
+    enum AbacatDocumentRole {
         Expression,
         Answer,
         ErrorRange,
@@ -52,31 +56,36 @@ pub mod qobject {
         #[qml_element]
         #[qproperty(usize, current_line, cxx_name = "currentLine")]
         #[base = QAbstractListModel]
-        type MyObject = super::MyObjectRust;
+        type AbacatDocument = super::AbacatDocumentRust;
 
         #[cxx_override]
         #[cxx_name = "rowCount"]
-        fn row_count(self: &MyObject, parent: &QModelIndex) -> i32;
+        fn row_count(self: &AbacatDocument, parent: &QModelIndex) -> i32;
 
         #[cxx_override]
-        fn data(self: &MyObject, index: &QModelIndex, role: i32) -> QVariant;
+        fn data(self: &AbacatDocument, index: &QModelIndex, role: i32) -> QVariant;
 
         #[cxx_override]
         #[cxx_name = "roleNames"]
-        fn role_names(self: &MyObject) -> QHash_i32_QByteArray;
+        fn role_names(self: &AbacatDocument) -> QHash_i32_QByteArray;
 
         #[inherit]
         #[cxx_name = "beginInsertRows"]
-        fn begin_insert_rows(self: Pin<&mut MyObject>, parent: &QModelIndex, first: i32, last: i32);
+        fn begin_insert_rows(
+            self: Pin<&mut AbacatDocument>,
+            parent: &QModelIndex,
+            first: i32,
+            last: i32,
+        );
 
         #[inherit]
         #[cxx_name = "endInsertRows"]
-        fn end_insert_rows(self: Pin<&mut MyObject>);
+        fn end_insert_rows(self: Pin<&mut AbacatDocument>);
 
         #[inherit]
         #[cxx_name = "dataChanged"]
         fn data_changed(
-            self: Pin<&mut MyObject>,
+            self: Pin<&mut AbacatDocument>,
             top_left: &QModelIndex,
             bottom_right: &QModelIndex,
             roles: &QList_i32,
@@ -84,16 +93,16 @@ pub mod qobject {
 
         #[qinvokable]
         #[cxx_name = "setLine"]
-        fn set_line(self: Pin<&mut MyObject>, line: usize);
+        fn set_line(self: Pin<&mut AbacatDocument>, line: usize);
 
         #[qinvokable]
         #[cxx_name = "getExpr"]
-        fn get_expr(self: &MyObject, index: usize) -> QVariant;
+        fn get_expr(self: &AbacatDocument, index: usize) -> QVariant;
 
         #[qinvokable]
         #[cxx_name = "setExpr"]
         pub fn set_expr(
-            self: Pin<&mut MyObject>,
+            self: Pin<&mut AbacatDocument>,
             line: usize,
             string: &QString,
             parent: &QModelIndex,
@@ -101,22 +110,22 @@ pub mod qobject {
 
         #[qinvokable]
         #[cxx_name = "insertRow"]
-        fn insert_row(self: Pin<&mut MyObject>, row: usize, value: &QString);
+        fn insert_row(self: Pin<&mut AbacatDocument>, row: usize, value: &QString);
 
         // TODO: need a way to force re-render, investigate signals and such
         #[qinvokable]
         #[cxx_name = "backgroundColor"]
-        fn background_color(self: &MyObject) -> QColor;
+        fn background_color(self: &AbacatDocument) -> QColor;
 
         // TODO: need a way to force re-render, investigate signals and such
         #[qinvokable]
         #[cxx_name = "answerOpacity"]
-        fn answer_opacity(self: &MyObject) -> f64;
+        fn answer_opacity(self: &AbacatDocument) -> f64;
 
         // TODO: need a way to force re-render, investigate signals and such or just make a property
         #[qinvokable]
         #[cxx_name = "plainTextColor"]
-        fn plain_text_color(self: &MyObject) -> QColor;
+        fn plain_text_color(self: &AbacatDocument) -> QColor;
     }
 }
 
@@ -137,7 +146,6 @@ impl Into<ErrorHighlight> for Option<Range<usize>> {
 pub struct RowData {
     data: QString,
     answer: Option<QString>,
-    // Abusing QPoint as a span
     error_range: Option<ErrorHighlight>,
 }
 
@@ -151,14 +159,14 @@ impl RowData {
     }
 }
 
-pub struct MyObjectRust {
+pub struct AbacatDocumentRust {
     theme: Theme,
     pub current_line: usize,
     list: Vec<RowData>,
     pub document: Document,
 }
 
-impl Default for MyObjectRust {
+impl Default for AbacatDocumentRust {
     fn default() -> Self {
         let mut doc = Document::new_with_default_constants();
         let mut row_data = vec![];
@@ -176,7 +184,7 @@ impl Default for MyObjectRust {
     }
 }
 
-impl qobject::MyObject {
+impl qobject::AbacatDocument {
     pub fn refresh_rows_cache(mut self: Pin<&mut Self>, from: usize) {
         for i in from..self.list.len() {
             let pair = &self.document.history_at(i).unwrap();
@@ -184,15 +192,13 @@ impl qobject::MyObject {
             let (answer, error) = match pair {
                 ParserEvalPair(Err(ParsingError::Empty(_)), _) => (None, None),
                 // TODO: Extract proper info out of parsing error, make helper to get first error and span
-                ParserEvalPair(Err(x), _) => (
-                    Some("Parsing error".into()),
-                    Some(ErrorHighlight::UnknownLocation),
-                ),
-                ParserEvalPair(Ok(_), Err(eval_err)) => (
-                    Some(format!("{}", eval_err).into()),
-                    Some(eval_err.span().into()),
-                ),
-                ParserEvalPair(Ok(_), Ok(eval)) => (Some(format!("{}", eval.value()).into()), None),
+                ParserEvalPair(Err(err), _) => {
+                    (Some(err.message().into()), Some(err.span().into()))
+                }
+                ParserEvalPair(Ok(_), Err(err)) => {
+                    (Some(err.message().into()), Some(err.span().into()))
+                }
+                ParserEvalPair(Ok(_), Ok(eval)) => (Some(eval.value().to_string().into()), None),
             };
 
             let row = &mut self.as_mut().rust_mut().list[i];
@@ -206,13 +212,15 @@ impl qobject::MyObject {
     }
 
     fn data(&self, index: &QModelIndex, role: i32) -> QVariant {
-        let element_role = MyElementRole { repr: role };
+        let element_role = AbacatDocumentRole { repr: role };
         self.list
             .get(index.row() as usize)
             .and_then(|row| match element_role {
-                MyElementRole::Expression => Some(Into::<QVariant>::into(&row.data)),
-                MyElementRole::Answer => row.answer.as_ref().map(|ans| Into::<QVariant>::into(ans)),
-                MyElementRole::ErrorRange => {
+                AbacatDocumentRole::Expression => Some(Into::<QVariant>::into(&row.data)),
+                AbacatDocumentRole::Answer => {
+                    row.answer.as_ref().map(|ans| Into::<QVariant>::into(ans))
+                }
+                AbacatDocumentRole::ErrorRange => {
                     row.error_range.as_ref().map(|highglight| match highglight {
                         ErrorHighlight::Location(range) => Into::<QVariant>::into(&QPoint::new(
                             range.start as i32,
@@ -221,7 +229,7 @@ impl qobject::MyObject {
                         ErrorHighlight::UnknownLocation => QVariant::default(),
                     })
                 }
-                MyElementRole::RenderAsError => {
+                AbacatDocumentRole::RenderAsError => {
                     Some(Into::<QVariant>::into(&row.error_range.is_some()))
                 }
                 _ => unreachable!("This should never happen"),
@@ -229,12 +237,15 @@ impl qobject::MyObject {
             .unwrap_or_default()
     }
 
-    fn role_names(&self) -> QHash_i32_QByteArray {
-        let mut hash = QHash_i32_QByteArray::default();
-        hash.insert(MyElementRole::Expression.repr, "expression".into());
-        hash.insert(MyElementRole::Answer.repr, "answer".into());
-        hash.insert(MyElementRole::ErrorRange.repr, "errorRange".into());
-        hash.insert(MyElementRole::RenderAsError.repr, "renderAsError".into());
+    fn role_names(&self) -> qobject::QHash_i32_QByteArray {
+        let mut hash = qobject::QHash_i32_QByteArray::default();
+        hash.insert(AbacatDocumentRole::Expression.repr, "expression".into());
+        hash.insert(AbacatDocumentRole::Answer.repr, "answer".into());
+        hash.insert(AbacatDocumentRole::ErrorRange.repr, "errorRange".into());
+        hash.insert(
+            AbacatDocumentRole::RenderAsError.repr,
+            "renderAsError".into(),
+        );
         hash
     }
 
@@ -245,6 +256,7 @@ impl qobject::MyObject {
         parent: &QModelIndex,
     ) {
         let current_row = &self.list[line];
+        // println!("current_row: '{:?}', new_data: '{}'", current_row, new_data);
         if current_row.data == *new_data {
             return;
         }
@@ -269,9 +281,9 @@ impl qobject::MyObject {
 
         // TODO: Move to common ref
         let roles: QList<i32> = vec![
-            MyElementRole::Answer.repr,
-            MyElementRole::ErrorRange.repr,
-            MyElementRole::RenderAsError.repr,
+            AbacatDocumentRole::Answer.repr,
+            AbacatDocumentRole::ErrorRange.repr,
+            AbacatDocumentRole::RenderAsError.repr,
         ]
         .into();
         let bottom_right = parent.sibling_at_row((length - 1) as i32);
@@ -305,15 +317,15 @@ impl qobject::MyObject {
         self.as_mut().end_insert_rows();
     }
 
-    pub fn background_color(self: &MyObject) -> QColor {
+    pub fn background_color(self: &qobject::AbacatDocument) -> QColor {
         let bg = &self.theme.design.background;
         QColor::from_rgb(bg.red as i32, bg.green as i32, bg.blue as i32)
     }
-    pub fn answer_opacity(self: &MyObject) -> f64 {
+    pub fn answer_opacity(self: &qobject::AbacatDocument) -> f64 {
         self.theme.design.answer_opacity
     }
 
-    pub fn plain_text_color(self: &MyObject) -> QColor {
+    pub fn plain_text_color(self: &qobject::AbacatDocument) -> QColor {
         let color = &self.theme.design.plain_text;
         QColor::from_rgb(color.red as i32, color.green as i32, color.blue as i32)
     }

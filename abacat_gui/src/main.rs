@@ -1,13 +1,10 @@
-mod cxxqt_object;
-mod experiment;
+mod abacat_document;
+mod qtextcharformat;
 mod settings;
 mod syntax_highlighter;
+
 mod util;
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
-
-// use crate::syntax_highlighter::qobject::test_func;
-//
-use crate::experiment::ffi::{create_basic_sub, print_basic_sub, test_func};
 
 // TODO: BUGS / FEATURES
 // - empty lines are thinner than lines with content by like 1 or 2 pixels :sob:
@@ -21,14 +18,9 @@ use crate::experiment::ffi::{create_basic_sub, print_basic_sub, test_func};
 // - Should support setting cursor to end of line by clicking on far right when theres no answers configured
 // - Seperate colors for keyword vs idents
 // - typing in a cell when out of view does not work
+// - 1 |> x() + 123 should work but doesnt as pipe does not take precedence over other expr
 
 fn main() {
-    // Client::start();
-    test_func();
-
-    let sub = create_basic_sub(123);
-    print_basic_sub(&sub);
-
     let mut app = QGuiApplication::new();
     let mut engine = QQmlApplicationEngine::new();
 

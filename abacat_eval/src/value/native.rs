@@ -55,7 +55,7 @@ mod tests {
     impl NativeValue {
         pub fn as_decimal_unchecked(&self) -> Decimal {
             if let NativeValue::Value(val) = self {
-                val.as_number().unwrap().as_decimal(0..0).unwrap()
+                val.as_number().unwrap().as_decimal(&None).unwrap()
             } else {
                 unreachable!("")
             }

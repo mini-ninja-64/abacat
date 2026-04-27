@@ -33,22 +33,22 @@ impl<M, C> BasicFailure<M, C> {
     }
 }
 
-pub trait LocatableFailure<M> {
-    fn span(&self) -> Option<Range<usize>>;
-    fn message(&self) -> &M;
+pub trait LocatableFailure<'a, M> {
+    fn span(&'a self) -> Option<Range<usize>>;
+    fn message(&'a self) -> M;
 }
 
 pub trait WithCause<C> {
     fn cause(&self) -> &C;
 }
 
-impl<M, C> LocatableFailure<M> for BasicFailure<M, C> {
+impl<'a, C> LocatableFailure<'a, &'a str> for BasicFailure<String, C> {
     fn span(&self) -> Option<Range<usize>> {
         Some(self.span.clone())
     }
 
-    fn message(&self) -> &M {
-        &self.message
+    fn message(&'a self) -> &'a str {
+        self.message.as_str()
     }
 }
 

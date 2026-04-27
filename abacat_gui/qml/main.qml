@@ -18,12 +18,12 @@ ApplicationWindow {
         font.family: "Monaco"
     }
 
-    MyObject {
-        id: myObject
+    AbacatDocument {
+        id: abacatDocument
     }
     Rectangle {
         anchors.fill: parent
-        color: myObject.backgroundColor()
+        color: abacatDocument.backgroundColor()
 
         ListView {
             id: listView
@@ -40,7 +40,7 @@ ApplicationWindow {
 
             spacing: 0
             focus: true
-            model: myObject
+            model: abacatDocument
             KeyNavigation.priority: KeyNavigation.BeforeItem
 
             delegate: Row {
@@ -56,7 +56,7 @@ ApplicationWindow {
 
                 Text {
                     width: 50
-                    color: myObject.plainTextColor()
+                    color: abacatDocument.plainTextColor()
                     font.family: "Monaco"
 
                     verticalAlignment: Text.AlignVCenter
@@ -66,20 +66,21 @@ ApplicationWindow {
                     text: index
                 }
 
-                QmlAbacatSyntaxHighlighter {
-                    input_document: textEditLine.textDocument
+                QmlAbacatSyntaxHighlighter2 {
+                    document: textEditLine.textDocument
                     error_range: errorRange
                 }
 
                 TextEdit {
                     id: textEditLine
-                    property bool processing: false
+                    property bool isInitialized: false
+                    Component.onCompleted: isInitialized = true
 
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignLeft
                     anchors.verticalCenter: parent.verticalCenter
 
-                    color: myObject.plainTextColor()
+                    color: abacatDocument.plainTextColor()
                     selectedTextColor: palette.highlightedText
                     font.family: "Monaco"
                     text: expression
@@ -87,18 +88,18 @@ ApplicationWindow {
 
                     onFocusChanged: focused => {
                         if (focused) {
-                            myObject.setLine(index);
+                            abacatDocument.setLine(index);
                             // move cursor to end??
                         }
                     }
 
                     function moveUp() {
-                        if (myObject.currentLine > 0) {
-                            myObject.setLine(myObject.currentLine - 1);
+                        if (abacatDocument.currentLine > 0) {
+                            abacatDocument.setLine(abacatDocument.currentLine - 1);
                         }
                     }
                     function moveDown() {
-                        myObject.setLine(myObject.currentLine + 1);
+                        abacatDocument.setLine(abacatDocument.currentLine + 1);
                     }
                     Keys.onBacktabPressed: event => {
                         moveUp();
@@ -110,7 +111,7 @@ ApplicationWindow {
                     }
                     Keys.onReturnPressed: event => {
                         event.accepted = true;
-                        myObject.insertRow(index + 1, "");
+                        abacatDocument.insertRow(index + 1, "");
                         moveDown();
                     }
                     Keys.onUpPressed: moveUp()
@@ -124,13 +125,16 @@ ApplicationWindow {
                             event.accepted = true;
                         }
                     }
-                    focus: myObject.currentLine === index
+                    focus: abacatDocument.currentLine === index
                     activeFocusOnPress: true
                     activeFocusOnTab: true
                     focusPolicy: Qt.TabFocus
                     onTextChanged: {
+                        if (!isInitialized) {
+                            return;
+                        }
                         const content = getText(0, length);
-                        myObject.setExpr(index, content, myObject.index(index, 0));
+                        abacatDocument.setExpr(index, content, abacatDocument.index(index, 0));
 
                         if (content.length > listView.longestLength || listView.longestLine === index) {
                             let maxStrWidth = 0;
@@ -151,34 +155,34 @@ ApplicationWindow {
 
                 // TODO: MOVE TO DUNAMIC COMPONENT WIV LOADER
                 Text {
-                    opacity: myObject.answerOpacity()
+                    opacity: abacatDocument.answerOpacity()
                     font.family: "Monaco"
 
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignLeft
                     anchors.verticalCenter: parent.verticalCenter
 
-                    color: myObject.plainTextColor()
+                    color: abacatDocument.plainTextColor()
                     // anchors.verticalCenter: parent.verticalCenter
 
                     text: answer === undefined ? "" : "="
                     // height: 50
                 }
-                QmlAbacatSyntaxHighlighter {
-                    input_document: textEditAnswer.textDocument
+                QmlAbacatSyntaxHighlighter2 {
+                    document: textEditAnswer.textDocument
                     render_as_error: renderAsError
                 }
                 TextEdit {
                     id: textEditAnswer
                     property bool processing: false
-                    opacity: myObject.answerOpacity()
+                    opacity: abacatDocument.answerOpacity()
                     font.family: "Monaco"
 
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignLeft
                     anchors.verticalCenter: parent.verticalCenter
 
-                    color: myObject.plainTextColor()
+                    color: abacatDocument.plainTextColor()
                     // anchors.verticalCenter: parent.verticalCenter
 
                     text: answer === undefined ? "" : answer

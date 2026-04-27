@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     ops::{Deref, Range},
     vec,
 };
@@ -60,7 +59,7 @@ where
         let mut to_remove: Option<usize> = None;
         for (index, (existing_ident, _)) in self.idents.iter().enumerate() {
             if ident == existing_ident {
-                to_remove.insert(index);
+                let _ = to_remove.insert(index);
                 break;
             }
         }
@@ -165,8 +164,8 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
         Expr::Binary(left_expr, BinaryOp::Pipe, right_expr) => {
             let left = eval_value(&*left_expr, snapshot, overrides)?;
             if let Expr::Call(func_expr, args) = &right_expr.0 {
-                let func_val = eval_value(&*func_expr, snapshot, overrides)?;
-                let func = func_val.0.as_function()?;
+                let (func_val, _) = eval_value(func_expr, snapshot, overrides)?;
+                let func = func_val.as_function()?;
                 let arg_values = args
                     .0
                     .iter()
@@ -185,6 +184,7 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
                 exec_func(func, (args, left_range), snapshot)
                     .map(|val| (val, expr_span.into_range()))
             }
+            .map_err(|err| err.replace_span(Some(right_expr.1.into_range())))
         }
         Expr::Binary(left, op, right) => {
             let (left, _) = eval_value(&*left, snapshot, overrides)?;
@@ -222,29 +222,36 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
                 .map(|arg| eval_value(arg, snapshot, overrides))
                 .collect::<Result<Vec<_>, _>>()?;
             exec_func(func, (arg_values, args_range.into_range()), snapshot)
+                .map_err(|val| val.replace_span(Some(expr.1.into_range())))
                 .map(|val| (val, expr_span.into_range()))
         }
         Expr::Ident(ident) => snapshot
             .resolve_ident(ident, overrides)
             .map(|val| (val.consume(), expr_span.into_range()))
             .ok_or_else(|| EvalError::IdentNotFound {
-                span: expr_span.into_range(),
+                span: Some(expr_span.into_range()),
                 ident: ident.clone(),
             }),
         Expr::Literal(literal) => Ok(match literal {
             Literal::Base10Decimal(decimal) => (
                 Value::new(
+                    Some(expr_span.into_range()),
                     TypedValue::Number(Number::Decimal(*decimal)),
                     DisplayHint::Auto,
                 ),
                 expr_span.into_range(),
             ),
             Literal::Bool(boolean) => (
-                Value::new(TypedValue::Boolean(*boolean), DisplayHint::Auto),
+                Value::new(
+                    Some(expr_span.into_range()),
+                    TypedValue::Boolean(*boolean),
+                    DisplayHint::Auto,
+                ),
                 expr_span.into_range(),
             ),
             Literal::Base16Num(num) => (
                 Value::new(
+                    Some(expr_span.into_range()),
                     TypedValue::Number(Number::Integer((*num).into())),
                     DisplayHint::Base16,
                 ),
@@ -252,6 +259,7 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
             ),
             Literal::Base10Num(num) => (
                 Value::new(
+                    Some(expr_span.into_range()),
                     TypedValue::Number(Number::Integer((*num).into())),
                     DisplayHint::Base10,
                 ),
@@ -259,6 +267,7 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
             ),
             Literal::Base8Num(num) => (
                 Value::new(
+                    Some(expr_span.into_range()),
                     TypedValue::Number(Number::Integer((*num).into())),
                     DisplayHint::Base8,
                 ),
@@ -266,6 +275,7 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
             ),
             Literal::Base2Num(num) => (
                 Value::new(
+                    Some(expr_span.into_range()),
                     TypedValue::Number(Number::Integer((*num).into())),
                     DisplayHint::Base2,
                 ),
@@ -285,7 +295,7 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
                         Ok(StateMutation::new(ident, val))
                     } else {
                         Err(EvalError::IdentNotFound {
-                            span: ident_span,
+                            span: Some(ident_span),
                             ident,
                         })
                     }
@@ -314,7 +324,7 @@ pub fn eval(expr: &SpannedChumsky<Expr>, snapshot: &Snapshot) -> Result<Eval, Ev
                     eval_value(right, snapshot, None)?,
                 )),
                 _ => Err(EvalError::NonIdentAssignment {
-                    span: left_span.into_range(),
+                    span: Some(left_span.into_range()),
                 }),
             };
         }
@@ -327,7 +337,7 @@ pub fn eval(expr: &SpannedChumsky<Expr>, snapshot: &Snapshot) -> Result<Eval, Ev
                         Ok(StateMutation::new(ident, val))
                     } else {
                         Err(EvalError::IdentNotFound {
-                            span: ident_span,
+                            span: Some(ident_span),
                             ident,
                         })
                     }

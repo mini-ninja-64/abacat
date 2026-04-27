@@ -1,4 +1,4 @@
-use abacat_common::{error::Spanned, types::PossiblyRef};
+use abacat_common::error::Spanned;
 
 use crate::error::EvalError;
 
@@ -11,7 +11,7 @@ impl Args {
             return Ok(());
         }
         Err(EvalError::ExpectedArgsN {
-            span: span.as_owned(),
+            span: Some(span.clone()),
             expected: count,
             received: args.len(),
         })
@@ -23,7 +23,7 @@ impl Args {
             return Ok(());
         }
         Err(EvalError::ExpectedAtLeastArgsN {
-            span: span.as_owned(),
+            span: Some(span.clone()),
             expected: count,
             received: args.len(),
         })
