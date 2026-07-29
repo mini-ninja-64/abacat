@@ -74,7 +74,9 @@ pub enum Expr {
         SpannedChumsky<Vec<SpannedChumsky<Self>>>,
     ),
     Ident(Ident),
-    Literal(Literal), // List(Box<>)
+    Literal(Literal),
+    List(Vec<SpannedChumsky<Self>>),
+    IndexedExpr(Box<SpannedChumsky<Self>>, Box<SpannedChumsky<Self>>),
     Parenthesised(Box<SpannedChumsky<Self>>),
     NamedFunction(SpannedChumsky<Ident>, SpannedChumsky<Function>),
     AnonymousFunction(SpannedChumsky<Function>),
@@ -112,7 +114,24 @@ where
             .map(|expr| Expr::Parenthesised(Box::new(expr)))
             .labelled("parenthesised expression")
             .as_context();
-
+        let list_expr = expr
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(
+                just(Token::LeftSquareBracket),
+                just(Token::RightSquareBracket),
+            )
+            .map(Expr::List)
+            .labelled("list expression")
+            .as_context();
+        let index_expr = expr
+            .clone()
+            .delimited_by(
+                just(Token::LeftSquareBracket),
+                just(Token::RightSquareBracket),
+            )
+            .labelled("index expression");
         let args_def = ident
             .clone()
             .separated_by(just(Token::Comma))
@@ -155,10 +174,14 @@ where
             ident_expr,
             anonymous_function,
             named_function,
+            list_expr,
             parenthesised_expr,
         ))
         .map_with(|i, e| (i, e.span()))
         .pratt((
+            postfix(5, index_expr, |left, index, e| {
+                (Expr::IndexedExpr(Box::new(left), Box::new(index)), e.span())
+            }),
             postfix(5, expr_args, |left, args, e| {
                 (Expr::Call(Box::new(left), args), e.span())
             }),

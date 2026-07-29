@@ -19,6 +19,7 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 // - Seperate colors for keyword vs idents
 // - typing in a cell when out of view does not work
 // - 1 |> x() + 123 should work but doesnt as pipe does not take precedence over other expr
+// - make sure to set error span from variables properly (including interior values of array)
 
 fn main() {
     let mut app = QGuiApplication::new();

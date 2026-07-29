@@ -104,8 +104,15 @@ fn calculate_captures(
         }
         Expr::Literal(_) => ident_collection,
         Expr::Parenthesised(expr) => calculate_captures(expr, ident_collection),
+        Expr::List(elements) => elements
+            .iter()
+            .fold(ident_collection, |vec, expr| calculate_captures(expr, vec)),
         Expr::AnonymousFunction(func) | Expr::NamedFunction(_, func) => {
             calculate_captures_func(func, ident_collection)
+        }
+        Expr::IndexedExpr(expr, index) => {
+            let captured = calculate_captures(expr, ident_collection);
+            calculate_captures(index, captured)
         }
     }
 }
@@ -155,6 +162,7 @@ fn exec_func(
 // TODO: Make eval funcs more generic
 pub type Snapshot<'a> = StateSnapshot<'a, String, NativeChangeset, ParserEvalPair>;
 
+// TODO: I dont think this needs to return a spanned value anymore, since Value contain a span already?
 pub fn eval_value<'a, 'b: 'c, 'c>(
     (expr, expr_span): &'a SpannedChumsky<Expr>,
     snapshot: &'b Snapshot<'b>,
@@ -285,6 +293,26 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
         Expr::Parenthesised(expr) => {
             eval_value(&*expr, snapshot, overrides).map(|(val, _)| (val, expr_span.into_range()))
         }
+        Expr::List(exprs) => exprs
+            .iter()
+            .map(|expr| eval_value(expr, snapshot, overrides).map(|(value, _)| value))
+            .collect::<Result<Vec<_>, _>>()
+            .map(|values| {
+                (
+                    Value::new(
+                        Some(expr_span.into_range()),
+                        TypedValue::List(values),
+                        DisplayHint::Auto,
+                    ),
+                    expr_span.into_range(),
+                )
+            }),
+        Expr::IndexedExpr(expr, index) => {
+            let (list, _) = eval_value(&*expr, snapshot, overrides)?;
+            let (index, _) = eval_value(&*index, snapshot, overrides)?;
+            let (index, elements) = validate_index_for_list(&index, &list)?;
+            Ok((elements[index].clone(), expr_span.into_range()))
+        }
         Expr::NamedFunction(_, _) => Err(EvalError::ImplementationBug),
         Expr::AnonymousFunction(func) => {
             let captures = calculate_captures_func(func, IdentCollection::new())
@@ -313,10 +341,33 @@ pub fn eval_value<'a, 'b: 'c, 'c>(
     }
 }
 
+pub fn validate_index_for_list<'a, 'b>(
+    index: &'a Value,
+    list: &'b Value,
+) -> Result<(usize, &'b Vec<Value>), EvalError> {
+    let elements = list.as_list()?;
+    let length = elements.len() as i128;
+    let index_span = &index.span;
+    let mut index = index.as_number()?.as_integer(index_span)?;
+    if index < 0 {
+        index = length + index;
+    };
+    if index < 0 || index >= length {
+        Err(EvalError::IndexOutOfRangeError {
+            span: index_span.clone(),
+            index,
+            length: length as usize,
+        })
+    } else {
+        // We can safely cast to usize as we already know it must be smaller than max of usize
+        // due to index >= length check
+        Ok((index as usize, elements))
+    }
+}
+
 pub fn eval(expr: &SpannedChumsky<Expr>, snapshot: &Snapshot) -> Result<Eval, EvalError> {
     match &expr.0 {
         Expr::Binary(left, BinaryOp::Equal, right) => {
-            //    Expr::Binary(, Bina)
             let (left, left_span) = left.deref();
             return match left {
                 Expr::Ident(ident) => Ok(Eval::ValueAssignment(

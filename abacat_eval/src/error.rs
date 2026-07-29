@@ -27,6 +27,12 @@ pub enum EvalError {
         span: Option<Range<usize>>,
         op: BinaryOp,
     },
+    // TODO: hmmm need to support multi highlight i guess
+    #[snafu(display("Arrays with different lengths"))]
+    MismatchArrayLength {
+        left: Option<Range<usize>>,
+        right: Option<Range<usize>>,
+    },
     #[snafu(display("Unable to complete unary {op}"))]
     UnaryOperationFailure {
         span: Option<Range<usize>>,
@@ -36,6 +42,12 @@ pub enum EvalError {
     IdentNotFound {
         span: Option<Range<usize>>,
         ident: String,
+    },
+    #[snafu(display("Index {index} is out of range for list of size {length}"))]
+    IndexOutOfRangeError {
+        span: Option<Range<usize>>,
+        index: i128,
+        length: usize,
     },
     #[snafu(display("Expected {expected} args, received {received}"))]
     ExpectedArgsN {
@@ -79,6 +91,11 @@ impl<'a> LocatableFailure<'a, String> for EvalError {
             EvalError::BinaryOperationFailure { span, op: _ } => span.clone(),
             EvalError::UnaryOperationFailure { span, op: _ } => span.clone(),
             EvalError::IdentNotFound { span, ident: _ } => span.clone(),
+            EvalError::IndexOutOfRangeError {
+                span,
+                index: _,
+                length: _,
+            } => span.clone(),
             EvalError::ExpectedArgsN {
                 span,
                 expected: _,
@@ -93,6 +110,7 @@ impl<'a> LocatableFailure<'a, String> for EvalError {
             EvalError::ImmutableAssignment { span } => span.clone(),
             EvalError::ParsingError => None,
             EvalError::ImplementationBug => None,
+            EvalError::MismatchArrayLength { left, right } => left.clone(),
         }
     }
 
@@ -119,6 +137,15 @@ impl EvalError {
                 EvalError::UnaryOperationFailure { span, op }
             }
             EvalError::IdentNotFound { span: _, ident } => EvalError::IdentNotFound { span, ident },
+            EvalError::IndexOutOfRangeError {
+                span: _,
+                index,
+                length,
+            } => EvalError::IndexOutOfRangeError {
+                span,
+                index,
+                length,
+            },
             EvalError::ExpectedArgsN {
                 span: _,
                 expected,
@@ -141,6 +168,9 @@ impl EvalError {
             EvalError::ImmutableAssignment { span: _ } => EvalError::ImmutableAssignment { span },
             EvalError::ParsingError => EvalError::ParsingError,
             EvalError::ImplementationBug => EvalError::ImplementationBug,
+            EvalError::MismatchArrayLength { left: _, right } => {
+                EvalError::MismatchArrayLength { left: span, right }
+            }
         }
     }
 }

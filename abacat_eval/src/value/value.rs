@@ -14,37 +14,43 @@ use crate::{
 
 macro_rules! binary_maths {
     ($self:ident, $maths_func:ident, $right:ident, $op:expr) => {{
-        let left_num = $self.as_number()?;
-        let right_num = $right.as_number()?;
+        $self.binary_with($right, &|l, r| {
+            let left_num = l.as_number()?;
+            let right_num = r.as_number()?;
 
-        if left_num.is_integer() && right_num.is_integer() {
-            let left_num = left_num.as_integer(&$self.span)?;
-            let right_num = right_num.as_integer(&$right.span)?;
+            if left_num.is_integer() && right_num.is_integer() {
+                let left_num = left_num.as_integer(&l.span)?;
+                let right_num = right_num.as_integer(&r.span)?;
 
-            Ok(Value {
-                span: None,
-                val: TypedValue::Number(Number::Integer(left_num.$maths_func(right_num).ok_or(
-                    EvalError::BinaryOperationFailure {
-                        span: combined_span($self, $right),
-                        op: $op,
-                    },
-                )?)),
-                display_hint: $self.display_hint,
-            })
-        } else {
-            let left_num = left_num.as_decimal(&$self.span)?;
-            let right_num = right_num.as_decimal(&$right.span)?;
-            Ok(Value {
-                span: None,
-                val: TypedValue::Number(Number::Decimal(left_num.$maths_func(right_num).ok_or(
-                    EvalError::BinaryOperationFailure {
-                        span: combined_span($self, $right),
-                        op: $op,
-                    },
-                )?)),
-                display_hint: DisplayHint::Auto,
-            })
-        }
+                Ok(Value {
+                    span: None,
+                    val: TypedValue::Number(Number::Integer(
+                        left_num.$maths_func(right_num).ok_or(
+                            EvalError::BinaryOperationFailure {
+                                span: combined_span(l, r),
+                                op: $op,
+                            },
+                        )?,
+                    )),
+                    display_hint: l.display_hint,
+                })
+            } else {
+                let left_num = left_num.as_decimal(&l.span)?;
+                let right_num = right_num.as_decimal(&r.span)?;
+                Ok(Value {
+                    span: None,
+                    val: TypedValue::Number(Number::Decimal(
+                        left_num.$maths_func(right_num).ok_or(
+                            EvalError::BinaryOperationFailure {
+                                span: combined_span(l, r),
+                                op: $op,
+                            },
+                        )?,
+                    )),
+                    display_hint: DisplayHint::Auto,
+                })
+            }
+        })
     }};
 }
 
@@ -102,6 +108,16 @@ impl Display for Value {
                 }),
                 _,
             ) => write!(f, "User Function"),
+            (TypedValue::List(values), _) => {
+                write!(f, "[")?;
+                for (count, v) in values.iter().enumerate() {
+                    if count != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", v)?;
+                }
+                write!(f, "]")
+            }
         }
     }
 }
@@ -134,6 +150,9 @@ impl Value {
             DisplayHint::Auto,
         )
     }
+    pub const fn list(values: Vec<Value>) -> Value {
+        Value::new(None, TypedValue::List(values), DisplayHint::Auto)
+    }
     pub const fn function(val: Function) -> Value {
         Value::new(None, TypedValue::Function(val), DisplayHint::Auto)
     }
@@ -153,6 +172,17 @@ impl Value {
             val: val,
             display_hint: display_hint,
         };
+    }
+
+    pub fn as_list(&self) -> Result<&Vec<Value>, EvalError> {
+        match &self.val {
+            TypedValue::List(values) => Ok(values),
+            _ => Err(EvalError::UnableToConvert {
+                span: self.span.clone(),
+                from: self.val.actual_type(),
+                to: ActualType::List,
+            }),
+        }
     }
 
     pub fn as_number(&self) -> Result<&Number, EvalError> {
@@ -187,79 +217,53 @@ impl Value {
         binary_maths!(self, checked_mul, right, BinaryOp::Multiply)
     }
     pub fn try_div(&self, right: &Value) -> Result<Value, EvalError> {
-        let left_num = self.as_number()?;
-        let right_num = right.as_number()?;
+        self.binary_with(right, &|l, r| {
+            let left_num = l.as_number()?;
+            let right_num = r.as_number()?;
 
-        if let Ok(right_num) = right_num.as_integer(&right.span)
-            && right_num == 0
-        {
-            return Err(EvalError::DivideByZero {
-                span: combined_span(self, right),
-            });
-        }
-
-        if left_num.is_integer()
-            && right_num.is_integer()
-            && (left_num.as_integer(&self.span)? % right_num.as_integer(&right.span)? == 0)
-        {
-            let left_num = left_num.as_integer(&self.span)?;
-            let right_num = right_num.as_integer(&right.span)?;
-            Ok(Value::integer(
-                left_num
-                    .checked_div(right_num)
-                    .ok_or(EvalError::BinaryOperationFailure {
-                        span: combined_span(self, right),
-                        op: BinaryOp::Divide,
-                    })?,
-                self.display_hint,
-            ))
-        } else {
-            let left_num = left_num.as_decimal(&self.span)?;
-            let right_num = right_num.as_decimal(&right.span)?;
-            let result =
-                left_num
-                    .checked_div(right_num)
-                    .ok_or(EvalError::BinaryOperationFailure {
-                        span: combined_span(self, right),
-                        op: BinaryOp::Divide,
-                    })?;
-            if result.is_integer()
-                && let Some(integer) = result.to_i128()
+            if let Ok(right_num) = right_num.as_integer(&r.span)
+                && right_num == 0
             {
-                Ok(Value::integer(integer, self.display_hint))
-            } else {
-                Ok(Value::decimal(result))
+                return Err(EvalError::DivideByZero {
+                    span: combined_span(l, r),
+                });
             }
-        }
-    }
 
-    // TODO: add comparison failure eval error
-    pub fn try_equal(&self, right: &Value) -> Result<Value, EvalError> {
-        self.val.checked_eq(&right.val).map(Value::boolean).ok_or(
-            EvalError::BinaryOperationFailure {
-                span: combined_span(self, right),
-                op: BinaryOp::EqualEqual,
-            },
-        )
+            if left_num.is_integer()
+                && right_num.is_integer()
+                && (left_num.as_integer(&l.span)? % right_num.as_integer(&r.span)? == 0)
+            {
+                let left_num = left_num.as_integer(&l.span)?;
+                let right_num = right_num.as_integer(&r.span)?;
+                Ok(Value::integer(
+                    left_num
+                        .checked_div(right_num)
+                        .ok_or(EvalError::BinaryOperationFailure {
+                            span: combined_span(l, r),
+                            op: BinaryOp::Divide,
+                        })?,
+                    self.display_hint,
+                ))
+            } else {
+                let left_num = left_num.as_decimal(&l.span)?;
+                let right_num = right_num.as_decimal(&r.span)?;
+                let result =
+                    left_num
+                        .checked_div(right_num)
+                        .ok_or(EvalError::BinaryOperationFailure {
+                            span: combined_span(l, r),
+                            op: BinaryOp::Divide,
+                        })?;
+                if result.is_integer()
+                    && let Some(integer) = result.to_i128()
+                {
+                    Ok(Value::integer(integer, self.display_hint))
+                } else {
+                    Ok(Value::decimal(result))
+                }
+            }
+        })
     }
-
-    pub fn try_and(&self, right: &Value) -> Result<Value, EvalError> {
-        self.val.checked_and(&right.val).map(Value::boolean).ok_or(
-            EvalError::BinaryOperationFailure {
-                span: combined_span(self, right),
-                op: BinaryOp::EqualEqual,
-            },
-        )
-    }
-    pub fn try_or(&self, right: &Value) -> Result<Value, EvalError> {
-        self.val.checked_or(&right.val).map(Value::boolean).ok_or(
-            EvalError::BinaryOperationFailure {
-                span: combined_span(self, right),
-                op: BinaryOp::OrOr,
-            },
-        )
-    }
-
     pub fn try_int_div(&self, right: &Value) -> Result<Value, EvalError> {
         let left_num = self.as_number()?;
         let right_num = right.as_number()?;
@@ -303,33 +307,106 @@ impl Value {
         }
     }
 
+    // TODO: add comparison failure eval error
+    pub fn try_equal(&self, right: &Value) -> Result<Value, EvalError> {
+        self.binary_with(right, &|l, r| {
+            l.val
+                .checked_eq(&r.val)
+                .map(Value::boolean)
+                .ok_or(EvalError::BinaryOperationFailure {
+                    span: combined_span(l, r),
+                    op: BinaryOp::EqualEqual,
+                })
+        })
+    }
+    pub fn try_and(&self, right: &Value) -> Result<Value, EvalError> {
+        self.binary_with(right, &|l, r| {
+            l.val
+                .checked_and(&r.val)
+                .map(Value::boolean)
+                .ok_or(EvalError::BinaryOperationFailure {
+                    span: combined_span(l, r),
+                    op: BinaryOp::AndAnd,
+                })
+        })
+    }
+    pub fn try_or(&self, right: &Value) -> Result<Value, EvalError> {
+        self.binary_with(right, &|l, r| {
+            l.val
+                .checked_or(&r.val)
+                .map(Value::boolean)
+                .ok_or(EvalError::BinaryOperationFailure {
+                    span: combined_span(l, r),
+                    op: BinaryOp::OrOr,
+                })
+        })
+    }
+
     pub fn try_exclaim(&self) -> Result<Value, EvalError> {
-        match &self.val {
+        self.map_inner(&|value| match &value.val {
             TypedValue::Boolean(bool) => Ok(Value::boolean(!*bool)),
             _ => Err(EvalError::UnaryOperationFailure {
-                span: self.span.clone(),
+                span: value.span.clone(),
                 op: UnaryOp::ExclamationMark,
             }),
-        }
+        })
     }
     pub fn try_negate(&self) -> Result<Value, EvalError> {
-        match &self.val {
+        self.map_inner(&|value| match &value.val {
             TypedValue::Number(number) => match number {
                 Number::Integer(int) => Ok(Value::new(
                     None,
                     TypedValue::Number(Number::Integer(-int)),
-                    self.display_hint,
+                    value.display_hint,
                 )),
                 Number::Decimal(decimal) => Ok(Value::new(
                     None,
                     TypedValue::Number(Number::Decimal(-decimal)),
-                    self.display_hint,
+                    value.display_hint,
                 )),
             },
             _ => Err(EvalError::UnaryOperationFailure {
-                span: self.span.clone(),
+                span: value.span.clone(),
                 op: UnaryOp::Minus,
             }),
+        })
+    }
+
+    fn map_inner(
+        &self,
+        f: &impl Fn(&Value) -> Result<Value, EvalError>,
+    ) -> Result<Value, EvalError> {
+        if let TypedValue::List(values) = &self.val {
+            let mut mapped = Vec::with_capacity(values.len());
+            for value in values {
+                mapped.push(value.map_inner(f)?);
+            }
+            Ok(Value::list(mapped))
+        } else {
+            f(self)
+        }
+    }
+
+    fn binary_with(
+        &self,
+        right: &Value,
+        f: &impl Fn(&Value, &Value) -> Result<Value, EvalError>,
+    ) -> Result<Value, EvalError> {
+        match (&self.val, &right.val) {
+            (TypedValue::List(left), TypedValue::List(right)) if left.len() == right.len() => {
+                let mut mapped = Vec::with_capacity(left.len());
+                for (left, right) in left.iter().zip(right) {
+                    mapped.push(left.binary_with(right, f)?);
+                }
+                Ok(Value::list(mapped))
+            }
+            (TypedValue::List(_), TypedValue::List(_)) => Err(EvalError::MismatchArrayLength {
+                left: self.span.clone(),
+                right: right.span.clone(),
+            }),
+            (TypedValue::List(_), _) => self.map_inner(&|left| f(left, right)),
+            (_, TypedValue::List(_)) => right.map_inner(&|right| f(self, right)),
+            (_, _) => f(self, right),
         }
     }
 }

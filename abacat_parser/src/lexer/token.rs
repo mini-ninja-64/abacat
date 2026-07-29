@@ -58,6 +58,10 @@ pub enum Token<'src> {
     LeftParens,
     #[display(")")]
     RightParens,
+    #[display("[")]
+    LeftSquareBracket,
+    #[display("]")]
+    RightSquareBracket,
     #[display(",")]
     Comma,
 
@@ -66,8 +70,12 @@ pub enum Token<'src> {
     Def,
 }
 
-pub fn lexer<'src>()
--> impl Parser<'src, &'src str, Vec<SpannedChumsky<Token<'src>>>, extra::Err<Rich<'src, char, SpanChumsky>>> {
+pub fn lexer<'src>() -> impl Parser<
+    'src,
+    &'src str,
+    Vec<SpannedChumsky<Token<'src>>>,
+    extra::Err<Rich<'src, char, SpanChumsky>>,
+> {
     // TODO: improve this
     let base10_num = text::int(10)
         .then(just('.').ignore_then(text::digits(10).to_slice()).or_not())
@@ -114,6 +122,8 @@ pub fn lexer<'src>()
         just("/").map(|_| Token::Divide),
         just("(").map(|_| Token::LeftParens),
         just(")").map(|_| Token::RightParens),
+        just("[").map(|_| Token::LeftSquareBracket),
+        just("]").map(|_| Token::RightSquareBracket),
         just(",").map(|_| Token::Comma),
         just("&&").map(|_| Token::AndAnd),
         just("|>").map(|_| Token::Pipe),

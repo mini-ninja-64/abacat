@@ -8,7 +8,11 @@ use rust_decimal::{
     prelude::{FromPrimitive, ToPrimitive},
 };
 
-use crate::{error::EvalError, state::VecChangeset, value::native::NativeFunctionPointer};
+use crate::{
+    error::EvalError,
+    state::VecChangeset,
+    value::{Value, native::NativeFunctionPointer},
+};
 
 #[derive(Debug, Display, Clone)]
 pub enum Number {
@@ -102,13 +106,15 @@ pub enum TypedValue {
     Number(Number),
     Boolean(bool),
     Function(Function),
+    List(Vec<Value>),
 }
 
-#[derive(Debug, Display, Clone)]
+#[derive(Debug, Display, Clone, PartialEq)]
 pub enum ActualType {
     Number,
     Boolean,
     Function,
+    List,
 }
 
 impl TypedValue {
@@ -117,6 +123,7 @@ impl TypedValue {
             TypedValue::Number(_) => ActualType::Number,
             TypedValue::Boolean(_) => ActualType::Boolean,
             TypedValue::Function(_) => ActualType::Function,
+            TypedValue::List(_) => ActualType::List,
         }
     }
 }

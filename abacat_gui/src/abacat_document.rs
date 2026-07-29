@@ -168,13 +168,13 @@ pub struct AbacatDocumentRust {
 
 impl Default for AbacatDocumentRust {
     fn default() -> Self {
-        let mut doc = Document::new_with_default_constants();
-        let mut row_data = vec![];
-        for i in 0..1000 {
-            let s = format!("{} + ans", i);
-            doc = doc.with_expr(parse(s.as_str()));
-            row_data.push(RowData::new(s.into()));
-        }
+        let doc = Document::new_with_default_constants().with_expr(Err(ParsingError::Empty(0..0)));
+        let row_data = vec![RowData::new("".into())];
+        // for i in 0..1000 {
+        //     let s = format!("{} + ans", i);
+        //     doc = doc.with_expr(parse(s.as_str()));
+        //     row_data.push(RowData::new(s.into()));
+        // }
         Self {
             theme: basic_theme(),
             current_line: 0,

@@ -4,6 +4,7 @@ use rust_decimal::Decimal;
 
 use crate::{
     error::EvalError,
+    eval::validate_index_for_list,
     value::{DisplayHint, Value, function::Args},
 };
 
@@ -37,6 +38,31 @@ pub const NATIVE_VALUES: phf::Map<&str, NativeValue> = phf_map! {
         Args::exactly(1, args)?;
         let (args, _) = args;
         Ok(args[0].0.with_display_hint(DisplayHint::Base8))
+    }),
+    "replace" => NativeValue::Function(|args| {
+        Args::exactly(3, args)?;
+        let (list, _) = Args::typed(0, super::ActualType::List, args)?;
+        let (index, _) = Args::typed(1, super::ActualType::Number, args)?;
+        let (index, elements) = validate_index_for_list(&index, &list)?;
+        let mut list_contents = elements.clone();
+        list_contents[index] = args.0[2].0.clone();
+        Ok(Value::list(list_contents))
+    }),
+    "push" => NativeValue::Function(|args| {
+        Args::at_least(2, args)?;
+        let elements = args.0[0].0.as_list()?;
+        let mut list_contents = elements.clone();
+        for (x, _) in &args.0[1..] {
+            list_contents.push(x.clone());
+        }
+        Ok(Value::list(list_contents))
+    }),
+    "pop" => NativeValue::Function(|args| {
+        Args::exactly(1, args)?;
+        let elements = args.0[0].0.as_list()?;
+        let mut list_contents = elements.clone();
+        list_contents.pop();
+        Ok(Value::list(list_contents))
     }),
     // Note: Should probs make a macro for this, prevents need for below unit test
     "PI" => NativeValue::Value(Value::decimal(Decimal::from_parts(1102470953, 185874565, 1703060790, false, 28))),

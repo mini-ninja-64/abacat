@@ -94,4 +94,10 @@ mod tests {
         let r = parse("12.34+45+0xff+0b100+0o123").unwrap();
         println!("{:?}", r);
     }
+
+    #[test]
+    fn indexed_expr() {
+        let r = parse("[1,2][0xFF]").unwrap();
+        println!("{:?}", r);
+    }
 }
