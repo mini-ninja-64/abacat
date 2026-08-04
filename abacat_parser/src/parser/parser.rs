@@ -191,7 +191,7 @@ where
             prefix(4, just(Token::ExclamationMark), |_, r, e| {
                 (Expr::Unary(UnaryOp::ExclamationMark, Box::new(r)), e.span())
             }),
-            infix(left(5), just(Token::Pipe), |l, _, r, e| {
+            infix(left(0), just(Token::Pipe), |l, _, r, e| {
                 (
                     Expr::Binary(Box::new(l), BinaryOp::Pipe, Box::new(r)),
                     e.span(),
