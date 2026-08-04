@@ -121,7 +121,8 @@ ApplicationWindow {
 
                     Keys.onPressed: event => {
                         if ((event.key === Qt.Key_Backspace) && (event.modifiers & Qt.ControlModifier)) {
-                            textEditLine.text = "";
+                            textEditLine.text = textEditLine.text.slice(cursorPosition);
+                            cursorPosition = 0;
                             event.accepted = true;
                         }
                     }
