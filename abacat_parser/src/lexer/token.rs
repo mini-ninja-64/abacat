@@ -1,3 +1,4 @@
+use abacat_common::error::{SpanChumsky, SpannedChumsky};
 use chumsky::{
     IterParser, Parser,
     error::Rich,
@@ -24,35 +25,56 @@ pub enum Token<'src> {
     Base8Num(u64),
 
     // Operators
+    #[display("!")]
     ExclamationMark,
+    #[display("+")]
     Plus,
+    #[display("-")]
     Minus,
+    #[display("*")]
     Multiply,
+    #[display("/")]
     Divide,
+
+    #[display("//")]
     IntDivide,
+    #[display("=")]
     Equal,
+    #[display("|>")]
     Pipe,
+    #[display("=>")]
     Arrow,
 
     // Comparators
+    #[display("==")]
     EqualEqual,
+    #[display("&&")]
     AndAnd,
+    #[display("||")]
     OrOr,
 
     // Symbols
+    #[display("(")]
     LeftParens,
+    #[display(")")]
     RightParens,
+    #[display("[")]
+    LeftSquareBracket,
+    #[display("]")]
+    RightSquareBracket,
+    #[display(",")]
     Comma,
 
     // Keywords
+    #[display("def")]
     Def,
 }
 
 pub fn lexer<'src>() -> impl Parser<
     'src,
     &'src str,
-    Vec<crate::Spanned<Token<'src>>>,
-    extra::Err<Rich<'src, char, crate::Span>>,
+    Vec<SpannedChumsky<Token<'src>>>,
+    extra::Err<Rich<'src, char, SpanChumsky>>,
 > {
     // TODO: improve this
     let base10_num = text::int(10)
@@ -79,7 +101,7 @@ pub fn lexer<'src>() -> impl Parser<
         Ok(Token::Base2Num(num))
     }));
 
-    let base8_num = just("0").ignore_then(text::digits(8).to_slice().try_map(|n, span| {
+    let base8_num = just("0o").ignore_then(text::digits(8).to_slice().try_map(|n, span| {
         let num = u64::from_str_radix(n, 8).map_err(|e| Rich::custom(span, e))?;
         Ok(Token::Base8Num(num))
     }));
@@ -100,6 +122,8 @@ pub fn lexer<'src>() -> impl Parser<
         just("/").map(|_| Token::Divide),
         just("(").map(|_| Token::LeftParens),
         just(")").map(|_| Token::RightParens),
+        just("[").map(|_| Token::LeftSquareBracket),
+        just("]").map(|_| Token::RightSquareBracket),
         just(",").map(|_| Token::Comma),
         just("&&").map(|_| Token::AndAnd),
         just("|>").map(|_| Token::Pipe),

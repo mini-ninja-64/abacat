@@ -1,0 +1,24 @@
+[package]
+name = "abacat-gui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+abacat_common = { path = "../abacat_common", version = "0.1.0" }
+abacat_eval = { path = "../abacat_eval", version = "0.1.0" }
+abacat_parser = { path = "../abacat_parser", version = "0.1.0" }
+ctrlc = "3.5.2"
+cxx = "1.0.194"
+cxx-qt = { git = "https://github.com/KDAB/cxx-qt.git" }
+cxx-qt-lib = { git = "https://github.com/KDAB/cxx-qt.git", features = ["full"] }
+num-derive = "0.4.2"
+num-traits = "0.2.19"
+rand = "0.10.0"
+
+[build-dependencies]
+cxx-qt-build = { git = "https://github.com/KDAB/cxx-qt.git", features = [
+  "link_qt_object_files",
+] }
+qt-build-utils = { git = "https://github.com/KDAB/cxx-qt.git", features = [
+  "qt_minimal",
+] }

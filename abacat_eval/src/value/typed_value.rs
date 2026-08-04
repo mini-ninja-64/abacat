@@ -1,17 +1,38 @@
+use std::ops::Range;
+
 use abacat_common::checked::{CheckedAnd, CheckedEq, CheckedOr};
+use abacat_parser::parser::parser::Function as FunctionExpr;
+use derive_more::Display;
 use rust_decimal::{
     Decimal,
     prelude::{FromPrimitive, ToPrimitive},
 };
 
-use abacat_parser::parser::parser::Function as FunctionExpr;
+use crate::{
+    error::EvalError,
+    state::VecChangeset,
+    value::{Value, native::NativeFunctionPointer},
+};
 
-use crate::{state::VecChangeset, value::native::NativeFunctionPointer};
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Display, Clone)]
 pub enum Number {
     Integer(i128),
     Decimal(Decimal),
+}
+
+#[derive(Debug, Display, Clone)]
+pub enum NumberType {
+    Integer,
+    Decimal,
+}
+
+impl Number {
+    pub fn number_type(&self) -> NumberType {
+        match self {
+            Number::Integer(_) => NumberType::Integer,
+            Number::Decimal(_) => NumberType::Decimal,
+        }
+    }
 }
 impl PartialEq for Number {
     fn eq(&self, other: &Self) -> bool {
@@ -37,10 +58,18 @@ impl Number {
             Number::Decimal(decimal) => decimal.is_integer(),
         }
     }
-    pub fn as_integer(&self) -> Result<i128, ()> {
+    pub fn as_integer(&self, span: &Option<Range<usize>>) -> Result<i128, EvalError> {
         match self {
             Number::Integer(int) => Ok(*int),
-            Number::Decimal(decimal) => decimal.to_i128().ok_or(()),
+            Number::Decimal(decimal) => {
+                decimal
+                    .to_i128()
+                    .ok_or_else(|| EvalError::NumberConversionFailure {
+                        span: span.clone(),
+                        from: NumberType::Decimal,
+                        to: NumberType::Integer,
+                    })
+            }
         }
     }
     pub fn is_decimal(&self) -> bool {
@@ -49,15 +78,20 @@ impl Number {
             Number::Decimal(decimal) => !decimal.is_integer(),
         }
     }
-    pub fn as_decimal(&self) -> Result<Decimal, ()> {
+    pub fn as_decimal(&self, span: &Option<Range<usize>>) -> Result<Decimal, EvalError> {
         match self {
-            Number::Integer(int) => Decimal::from_i128(*int).ok_or(()),
+            Number::Integer(int) => {
+                Decimal::from_i128(*int).ok_or_else(|| EvalError::NumberConversionFailure {
+                    span: span.clone(),
+                    from: NumberType::Integer,
+                    to: NumberType::Decimal,
+                })
+            }
             Number::Decimal(decimal) => Ok(*decimal),
         }
     }
 }
 
-// TODO: User function interning, instead of holding an actual expr
 #[derive(Debug, Clone)]
 pub enum Function {
     Native(NativeFunctionPointer),
@@ -72,6 +106,26 @@ pub enum TypedValue {
     Number(Number),
     Boolean(bool),
     Function(Function),
+    List(Vec<Value>),
+}
+
+#[derive(Debug, Display, Clone, PartialEq)]
+pub enum ActualType {
+    Number,
+    Boolean,
+    Function,
+    List,
+}
+
+impl TypedValue {
+    pub fn actual_type(&self) -> ActualType {
+        match self {
+            TypedValue::Number(_) => ActualType::Number,
+            TypedValue::Boolean(_) => ActualType::Boolean,
+            TypedValue::Function(_) => ActualType::Function,
+            TypedValue::List(_) => ActualType::List,
+        }
+    }
 }
 
 impl CheckedEq<&TypedValue> for TypedValue {

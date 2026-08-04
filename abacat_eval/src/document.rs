@@ -1,49 +1,75 @@
 use abacat_common::mutability::MutabilityGuard;
-use abacat_parser::{Spanned, parser::parser::Expr};
+use abacat_parser::{ParserResult, parser::parser::Ident};
 
 use crate::{
-    eval::{Eval, eval},
-    state::{NativeChangeset, State, StateMutation, VecChangeset},
-    value::native::NATIVE_VALUES,
+    error::EvalError,
+    eval::{Eval, Snapshot, eval},
+    state::{NativeChangeset, StateMutation, StateSnapshot, StateSource, VecChangeset},
+    value::{Value, native::NATIVE_VALUES},
 };
 
+#[derive(Debug)]
+
+pub struct ParserEvalPair(pub ParserResult, pub Result<Eval, EvalError>);
+
+#[derive(Debug)]
 pub struct Document {
-    state: State,
-    exprs: Vec<Spanned<Expr>>,
+    initial_state: NativeChangeset,
+    exprs: Vec<ParserEvalPair>,
+}
+
+impl StateSource<Ident> for ParserEvalPair {
+    fn resolve_ident(&self, ident: &Ident) -> Option<MutabilityGuard<Value>> {
+        self.1
+            .as_ref()
+            .ok()
+            .and_then(|eval| match (ident.as_str(), eval) {
+                ("ans", eval) => Some(MutabilityGuard::Immutable(eval.value().clone())),
+                (ident, Eval::ValueAssignment((assignment, _), value))
+                    if ident == assignment.as_str() =>
+                {
+                    Some(MutabilityGuard::Mutable(value.0.clone()))
+                }
+                _ => None,
+            })
+    }
 }
 
 impl Document {
-    pub fn new(state: State) -> Document {
+    pub fn new(state: NativeChangeset) -> Document {
         Document {
-            state,
             exprs: vec![],
+            initial_state: state,
         }
     }
 
     pub fn new_with_default_constants() -> Document {
-        Document::new(State::new(NativeChangeset::new(&NATIVE_VALUES)))
+        Document::new(NativeChangeset::new(&NATIVE_VALUES))
     }
 
-    pub fn next(&mut self, expr: Spanned<Expr>) -> Result<Eval, ()> {
-        let ans = eval(&expr, &self.state.last())?;
-        let ans_value = match &ans {
-            Eval::Value(value) => value.clone(),
-            Eval::ValueAssignment(_, value) => value.clone(),
-        };
+    pub fn with_expr(mut self, expr: ParserResult) -> Document {
+        let _ = self.next(expr);
+        self
+    }
+
+    fn calculate(expr: &ParserResult, state: &Snapshot) -> Result<Eval, EvalError> {
+        let expr = expr.as_ref().map_err(|_| EvalError::ParsingError)?;
+        let ans = eval(expr, state)?;
+        let ans_value = ans.value().clone();
         let mut changeset = vec![];
 
-        if let Eval::ValueAssignment(ident, value) = &ans {
-            let mutable = self
-                .state
-                .last()
+        if let Eval::ValueAssignment((ident, ident_span), value) = &ans {
+            let mutable = state
                 .resolve_ident::<VecChangeset<_>>(&ident, None)
                 .map_or(true, |state| state.is_mutable());
             if !mutable {
-                return Err(()); // Attempt to mutate immutable variable
+                return Err(EvalError::ImmutableAssignment {
+                    span: Some(ident_span.clone()),
+                });
             }
             changeset.push(StateMutation::new(
                 ident.clone(),
-                MutabilityGuard::Mutable(value.clone()),
+                MutabilityGuard::Mutable(value.0.clone()),
             ));
         }
 
@@ -51,7 +77,57 @@ impl Document {
             "ans".to_string(),
             MutabilityGuard::Immutable(ans_value),
         ));
-        self.state.publish(changeset);
         return Ok(ans);
+    }
+
+    pub fn replace_at(&mut self, to_replace: usize, expr: ParserResult) {
+        self.exprs[to_replace].0 = expr;
+        for index in to_replace..self.exprs.len() {
+            let ParserEvalPair(expr, _) = &self.exprs[index];
+            let snapshot = self.snapshot_at(index).unwrap();
+            let new_eval = Self::calculate(expr, &snapshot);
+            self.exprs[index].1 = new_eval;
+        }
+    }
+
+    pub fn snapshot_at(&'_ self, index: usize) -> Option<Snapshot<'_>> {
+        Some(StateSnapshot::new(
+            &self.initial_state,
+            &self.exprs[0..index],
+        ))
+    }
+    pub fn current_snapshot(&self) -> Snapshot<'_> {
+        StateSnapshot::new(&self.initial_state, &self.exprs[0..])
+    }
+
+    pub fn insert_at(&mut self, to_insert: usize, new_expr: ParserResult) {
+        self.exprs.insert(
+            to_insert,
+            ParserEvalPair(new_expr, Err(EvalError::ImplementationBug)),
+        );
+        for index in to_insert..self.exprs.len() {
+            let ParserEvalPair(expr, _) = &self.exprs[index];
+            let snapshot = self.snapshot_at(index).unwrap();
+            let new_eval = Self::calculate(expr, &snapshot);
+            self.exprs[index].1 = new_eval;
+        }
+    }
+
+    pub fn next(&mut self, expr: ParserResult) -> Result<Eval, EvalError> {
+        let state = self.current_snapshot();
+        let eval = Self::calculate(&expr, &state);
+
+        self.exprs.push(ParserEvalPair(expr, eval.clone()));
+        eval
+    }
+
+    pub fn history(&self) -> &[ParserEvalPair] {
+        &self.exprs
+    }
+    pub fn history_at(&self, index: usize) -> Option<&ParserEvalPair> {
+        self.exprs.get(index)
+    }
+    pub fn history_len(&self) -> usize {
+        self.exprs.len()
     }
 }

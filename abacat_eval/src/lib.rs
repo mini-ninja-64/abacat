@@ -1,4 +1,5 @@
 pub mod document;
+pub mod error;
 pub mod eval;
 pub mod state;
 pub mod value;
@@ -12,7 +13,7 @@ mod tests {
     use rust_decimal::Decimal;
 
     use crate::{
-        document::Document,
+        document::{Document, ParserEvalPair},
         eval::Eval,
         value::{DisplayHint, Value},
     };
@@ -20,28 +21,25 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    #[case("-1 + 1.5", Eval::Value(Value::decimal(Decimal::from_str("0.5").unwrap())))]
-    #[case("0.5 / 5", Eval::Value(Value::decimal(Decimal::from_str("0.1").unwrap())))]
-    #[case("0.5 // 5", Eval::Value(Value::integer(0, DisplayHint::Auto)))]
-    #[case("0xFF / 5.1", Eval::Value(Value::integer(50, DisplayHint::Base16)))]
-    #[case("!true", Eval::Value(Value::boolean(false)))]
-    #[case("true || false", Eval::Value(Value::boolean(true)))]
-    #[case("true && false", Eval::Value(Value::boolean(false)))]
-    #[case("true == false", Eval::Value(Value::boolean(false)))]
-    #[case("0.1 == 1", Eval::Value(Value::boolean(false)))]
-    #[case("1 == 1", Eval::Value(Value::boolean(true)))]
-    #[case("1 == 1.0000000000000", Eval::Value(Value::boolean(true)))]
-    #[case("PI", Eval::Value(Value::decimal(Decimal::from_str("3.1415926535897932384626433833").unwrap())))]
-    #[case(
-        "E == 2.7182818284590452353602874714",
-        Eval::Value(Value::boolean(true))
-    )]
-    fn statements_are_evaluated(#[case] statement: &str, #[case] expected: Eval) {
+    #[case("-1 + 1.5", Value::decimal(Decimal::from_str("0.5").unwrap()))]
+    #[case("0.5 / 5", Value::decimal(Decimal::from_str("0.1").unwrap()))]
+    #[case("0.5 // 5", Value::integer(0, DisplayHint::Auto))]
+    #[case("0xFF / 5.1", Value::integer(50, DisplayHint::Base16))]
+    #[case("!true", Value::boolean(false))]
+    #[case("true || false", Value::boolean(true))]
+    #[case("true && false", Value::boolean(false))]
+    #[case("true == false", Value::boolean(false))]
+    #[case("0.1 == 1", Value::boolean(false))]
+    #[case("1 == 1", Value::boolean(true))]
+    #[case("1 == 1.0000000000000", Value::boolean(true))]
+    #[case("PI", Value::decimal(Decimal::from_str("3.1415926535897932384626433833").unwrap()))]
+    #[case("E == 2.7182818284590452353602874714", Value::boolean(true))]
+    fn statements_are_evaluated(#[case] statement: &str, #[case] expected: Value) {
         use crate::document::Document;
 
         let mut doc = Document::new_with_default_constants();
-        let result = doc.next(parse(statement).unwrap()).unwrap();
-        assert!(result.checked_eq(&expected).unwrap());
+        let result = doc.next(parse(statement)).unwrap();
+        assert!(result.value().checked_eq(&expected).unwrap());
     }
 
     #[rstest]
@@ -55,12 +53,32 @@ mod tests {
         // println!("{:?}", y);
     }
 
+    // TODO: Assertions
+    #[rstest]
+    fn xyz() {
+        let mut doc = Document::new_with_default_constants();
+
+        let v = vec!["x = 123", "x = x + 456", "ans"];
+        for expr in v {
+            doc.next(parse(expr)).unwrap();
+        }
+        doc.replace_at(0, parse("x = 1"));
+
+        for ParserEvalPair(expr, eval) in doc.history() {
+            let expr = expr.as_ref().unwrap();
+            let e = eval.as_ref().unwrap();
+            match e {
+                Eval::Value(value) => println!("'{:?}' = {:?}", expr, value),
+                _ => println!("'{:?}'", expr),
+            }
+        }
+    }
+
+    // TODO: Assertions
     #[rstest]
     fn fun_test() {
         let mut doc = Document::new_with_default_constants();
 
-        // let result = doc.next(parse("testFuncTrue() || false").unwrap()).unwrap();
-        // println!("{:?}", result);
         let v = vec![
             "x = 123",
             "def testy() = x",
@@ -73,7 +91,7 @@ mod tests {
             "negate(true)",
         ];
         for expr in v {
-            let eval = doc.next(parse(expr).unwrap()).unwrap();
+            let eval = doc.next(parse(expr)).unwrap();
             match eval {
                 Eval::Value(value) => println!("'{}' = {:?}", expr, value),
                 _ => println!("'{}'", expr),
@@ -85,16 +103,20 @@ mod tests {
     fn assignments_mutate_state() {
         let mut doc = Document::new_with_default_constants();
 
-        let result = doc.next(parse("x = 0x05").unwrap()).unwrap();
-        assert!(result
-            .checked_eq(&Eval::ValueAssignment(
-                "x".to_string(),
-                Value::integer(5, DisplayHint::Base16)
-            ))
-            .unwrap());
-        let result = doc.next(parse("x + 6").unwrap()).unwrap();
-        assert!(result
-            .checked_eq(&Eval::Value(Value::integer(11, DisplayHint::Base16)))
-            .unwrap());
+        let result = doc.next(parse("x = 0x05")).unwrap();
+
+        assert!(
+            result
+                .value()
+                .checked_eq(&Value::integer(5, DisplayHint::Base16))
+                .unwrap()
+        );
+        let result = doc.next(parse("x + 6")).unwrap();
+        assert!(
+            result
+                .value()
+                .checked_eq(&Value::integer(11, DisplayHint::Base16))
+                .unwrap()
+        );
     }
 }

@@ -1,3 +1,4 @@
+use abacat_common::error::SpanChumsky;
 use chumsky::{
     IterParser, Parser,
     error::Rich,
@@ -8,16 +9,17 @@ use chumsky::{
     recursive::recursive,
     select,
 };
+use derive_more::Display;
 use rust_decimal::Decimal;
 
-use crate::{Span, Spanned, lexer::token::Token};
+use crate::{SpannedChumsky, lexer::token::Token};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Display)]
 pub enum UnaryOp {
     ExclamationMark,
     Minus,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Display)]
 pub enum BinaryOp {
     Plus,
     Minus,
@@ -47,33 +49,46 @@ pub enum Literal {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Function {
-    pub args: Vec<Spanned<Ident>>,
-    pub body: Box<Spanned<Expr>>,
+    pub args: SpannedChumsky<Vec<SpannedChumsky<Ident>>>,
+    pub body: Box<SpannedChumsky<Expr>>,
 }
 impl Function {
-    pub fn new<'a>(args: Vec<Spanned<Ident>>, body: Box<Spanned<Expr>>) -> Function {
+    pub fn new<'a>(
+        args: SpannedChumsky<Vec<SpannedChumsky<Ident>>>,
+        body: Box<SpannedChumsky<Expr>>,
+    ) -> Function {
         Function { args, body }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
-    Binary(Box<Spanned<Self>>, BinaryOp, Box<Spanned<Self>>),
-    Unary(UnaryOp, Box<Spanned<Self>>),
-    Call(Box<Spanned<Self>>, Vec<Spanned<Self>>),
-    Ident(Spanned<Ident>),
-    Literal(Literal), // List(Box<>)
-    Parenthesised(Box<Spanned<Self>>),
-    NamedFunction(Spanned<Ident>, Spanned<Function>),
-    AnonymousFunction(Spanned<Function>),
+    Binary(
+        Box<SpannedChumsky<Self>>,
+        BinaryOp,
+        Box<SpannedChumsky<Self>>,
+    ),
+    Unary(UnaryOp, Box<SpannedChumsky<Self>>),
+    Call(
+        Box<SpannedChumsky<Self>>,
+        SpannedChumsky<Vec<SpannedChumsky<Self>>>,
+    ),
+    Ident(Ident),
+    Literal(Literal),
+    List(Vec<SpannedChumsky<Self>>),
+    IndexedExpr(Box<SpannedChumsky<Self>>, Box<SpannedChumsky<Self>>),
+    Parenthesised(Box<SpannedChumsky<Self>>),
+    NamedFunction(SpannedChumsky<Ident>, SpannedChumsky<Function>),
+    AnonymousFunction(SpannedChumsky<Function>),
 }
 
 pub fn expr<'tokens, I>()
--> impl Parser<'tokens, I, Spanned<Expr>, extra::Err<Rich<'tokens, Token<'tokens>, Span>>> + Clone
+-> impl Parser<'tokens, I, SpannedChumsky<Expr>, extra::Err<Rich<'tokens, Token<'tokens>, SpanChumsky>>>
++ Clone
 where
-    I: ValueInput<'tokens, Token = Token<'tokens>, Span = Span>,
+    I: ValueInput<'tokens, Token = Token<'tokens>, Span = SpanChumsky>,
 {
-    let ident = select! {Token::Ident(i) => i}.map_with(|i, e| (i.to_string(), e.span()));
+    let ident = select! {Token::Ident(i) => i.to_string()}.map_with(|id, e| (id, e.span()));
     let literal = select! {
         Token::Bool(x) => Literal::Bool(x),
         Token::Base2Num(n) => Literal::Base2Num(n),
@@ -83,25 +98,46 @@ where
         Token::Base16Num(n) => Literal::Base16Num(n),
     };
 
-    // TODO: Fix binding power, its wrong ooops
+    // TODO: Fix binding power, i think some mistakes, will be uncovered by testing
     recursive(|expr| {
-        let ident_expr = ident.map(|i| Expr::Ident(i)).labelled("Ident").as_context();
+        let ident_expr = ident
+            .map(|(i, _)| Expr::Ident(i))
+            .labelled("identifier")
+            .as_context();
         let literal_expr = literal
             .map(|v| Expr::Literal(v))
-            .labelled("Literal")
+            .labelled("literal")
             .as_context();
         let parenthesised_expr = expr
             .clone()
             .delimited_by(just(Token::LeftParens), just(Token::RightParens))
-            .map(|e| Expr::Parenthesised(Box::new(e)))
-            .labelled("Parenthesised")
+            .map(|expr| Expr::Parenthesised(Box::new(expr)))
+            .labelled("parenthesised expression")
             .as_context();
-
+        let list_expr = expr
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(
+                just(Token::LeftSquareBracket),
+                just(Token::RightSquareBracket),
+            )
+            .map(Expr::List)
+            .labelled("list expression")
+            .as_context();
+        let index_expr = expr
+            .clone()
+            .delimited_by(
+                just(Token::LeftSquareBracket),
+                just(Token::RightSquareBracket),
+            )
+            .labelled("index expression");
         let args_def = ident
             .clone()
             .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
-            .delimited_by(just(Token::LeftParens), just(Token::RightParens));
+            .delimited_by(just(Token::LeftParens), just(Token::RightParens))
+            .map_with(|args, e| (args, e.span()));
 
         let named_function = just(Token::Def)
             .ignore_then(ident)
@@ -113,7 +149,7 @@ where
                     .map_with(|(args, body), e| (Function::new(args, Box::new(body)), e.span())),
             )
             .map(|(name, func)| Expr::NamedFunction(name, func))
-            .labelled("Named function declaration")
+            .labelled("named function")
             .as_context();
 
         let anonymous_function = args_def
@@ -122,24 +158,30 @@ where
             .map_with(|(args, body), e| {
                 Expr::AnonymousFunction((Function::new(args, Box::new(body)), e.span()))
             })
-            .labelled("Anonymous function declaration")
+            .labelled("anonymous function")
             .as_context();
 
         let expr_args = expr
             .clone()
             .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
-            .delimited_by(just(Token::LeftParens), just(Token::RightParens));
+            .delimited_by(just(Token::LeftParens), just(Token::RightParens))
+            .map_with(|args, e| (args, e.span()))
+            .labelled("parenthesised arguments list");
 
         choice((
             literal_expr,
             ident_expr,
             anonymous_function,
             named_function,
+            list_expr,
             parenthesised_expr,
         ))
         .map_with(|i, e| (i, e.span()))
         .pratt((
+            postfix(5, index_expr, |left, index, e| {
+                (Expr::IndexedExpr(Box::new(left), Box::new(index)), e.span())
+            }),
             postfix(5, expr_args, |left, args, e| {
                 (Expr::Call(Box::new(left), args), e.span())
             }),
@@ -212,11 +254,3 @@ where
         ))
     })
 }
-
-// pub fn expr<'tokens, 'src: 'tokens, I>() -> impl Parser<
-//     'tokens,
-//     I,
-//     Vec<Spanned<Expr<'src>>>,
-//     extra::Err<Rich<'tokens, Token<'src>, Span>>,
-// > {
-// }

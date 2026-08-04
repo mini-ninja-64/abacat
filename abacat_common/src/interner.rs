@@ -1,3 +1,4 @@
+// NOTE: Currently unused
 pub trait Interner<'a, T, I = usize>
 where
     T: PartialEq<T>,
